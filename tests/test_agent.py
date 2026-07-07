@@ -171,6 +171,47 @@ async def test_book_appointment_proceeds_when_slot_is_free(tenant, fake_pool, mo
 
 
 @pytest.mark.asyncio
+async def test_create_customer_refuses_when_dossier_already_exists(tenant, fake_pool, monkeypatch):
+    """Regressie-test voor een echte bug: create_customer gebruikt ON CONFLICT
+    DO UPDATE, dus zonder deze guard zou het model een BESTAAND dossier stil
+    kunnen overschrijven door gewoon een andere naam op te geven — waarna de
+    naam-mismatch-check niets meer detecteert (want de database staat dan al
+    op de nieuwe, foute naam voor de check ooit plaatsvindt)."""
+    adapter = _fake_adapter([])
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
+    monkeypatch.setattr(
+        agent, "find_or_flag_new",
+        AsyncMock(return_value=({"phone_number": "+32470000001", "name": "Darmont"}, False)),
+    )
+    register_mock = AsyncMock()
+    monkeypatch.setattr(agent, "register_new_customer", register_mock)
+
+    result = await agent.execute_tool(
+        tenant, fake_pool, "+32470000001", "create_customer", {"name": "Katia"}
+    )
+
+    assert result["requires_human"] is True
+    register_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_create_customer_succeeds_for_genuinely_new_number(tenant, fake_pool, monkeypatch):
+    adapter = _fake_adapter([])
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
+    monkeypatch.setattr(agent, "find_or_flag_new", AsyncMock(return_value=(None, True)))
+    monkeypatch.setattr(
+        agent, "register_new_customer",
+        AsyncMock(return_value={"phone_number": "+32470000001", "name": "Katia"}),
+    )
+
+    result = await agent.execute_tool(
+        tenant, fake_pool, "+32470000001", "create_customer", {"name": "Katia"}
+    )
+
+    assert "error" not in result
+
+
+@pytest.mark.asyncio
 async def test_escalate_to_human_returns_escalation_contact(tenant, fake_pool, monkeypatch):
     adapter = _fake_adapter([])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)

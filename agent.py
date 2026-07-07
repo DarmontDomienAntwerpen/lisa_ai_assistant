@@ -86,14 +86,21 @@ Je taak:
 - Je bepaalt ALTIJD eerst of dit een nieuwe of bestaande klant is — dit is al
   voor je vastgesteld, zie KLANTCONTEXT hieronder. Ga hier nooit zelf naar
   raden en vraag het niet opnieuw als het al bekend is.
-- Ongeacht nieuw of bestaand: vraag ALTIJD eerst waarmee je kan helpen vandaag
-  — dat weet je nooit vooraf, ook niet bij een bekende klant.
-- Bij een nieuwe klant die een AFSPRAAK wil maken: vraag ENKEL de achternaam
-  (geen voornaam nodig), en laat de klant die letter voor letter spellen —
-  namen worden te vaak verkeerd verstaan/getranscribeerd om zomaar aan te
-  nemen. Roep pas daarna create_customer aan voor je book_appointment
-  aanroept. Bij een loutere infovraag (geen afspraak) is dit niet nodig —
-  dan hoef je geen intake te doen.
+- Bij een BESTAANDE klant: open met een korte begroeting, en vraag METEEN
+  DAARNA — nog voor je vraagt waarmee je kan helpen — of je spreekt met de
+  naam die je al kent (bv. "Hey, spreek ik met {{naam}}?"). Bevestigt de
+  klant een ANDERE naam dan wat je kent: behandel dit NOOIT als een gewone
+  nieuwe klant en roep NOOIT create_customer aan (dat overschrijft het
+  bestaande dossier) — leg eerlijk uit dat je dit niet automatisch kan
+  verwerken en escaleer naar een medewerker. Bevestigt de klant wel de juiste
+  naam: ga pas dan verder met waarmee je kan helpen.
+- Bij een NIEUWE klant: vraag NIET meteen naar de naam. Vraag eerst waarmee
+  je kan helpen — pas ALS de klant effectief een afspraak wil maken, vraag je
+  de achternaam (geen voornaam nodig), en laat de klant die letter voor
+  letter spellen — namen worden te vaak verkeerd verstaan/getranscribeerd om
+  zomaar aan te nemen. Roep pas daarna create_customer aan voor je
+  book_appointment aanroept. Bij een loutere infovraag (geen afspraak) is dit
+  niet nodig — dan hoef je geen intake te doen.
 - Versta of hoor je die spelling niet goed (onduidelijke/dubbelzinnige
   letters, stilte, ruis): dit is GEEN reden om te escaleren. Zeg gewoon
   rustig en vriendelijk dat je het niet goed meekreeg en vraag om de
@@ -387,6 +394,19 @@ async def execute_tool(
                 result = await adapter.reschedule_booking(booking, new_slot, customer)
             return {**result, "customer_name": booking.get("customer_name", "")}
         if tool_name == "create_customer":
+            # Nooit enkel op het model vertrouwen om create_customer alleen voor
+            # ECHT nieuwe klanten aan te roepen — als er al een dossier bestaat
+            # voor dit nummer, zou create_customer dat stil OVERSCHRIJVEN
+            # (local_create_customer doet ON CONFLICT DO UPDATE), wat de hele
+            # naam-mismatch-bescherming omzeilt: een beller die een andere naam
+            # opgeeft zou zo het bestaande dossier kunnen overschrijven vóór de
+            # mismatch-check ooit een kans krijgt iets te weigeren.
+            existing_customer, _ = await find_or_flag_new(tenant, pool, phone_number)
+            if existing_customer is not None:
+                return {
+                    "error": "Er bestaat al een dossier voor dit nummer — kan geen nieuwe klant aanmaken. Een medewerker moet dit bevestigen.",
+                    "requires_human": True,
+                }
             details = {"name": tool_input["name"], "email": tool_input.get("email", ""), "notes": tool_input.get("notes", "")}
             result = await register_new_customer(tenant, pool, phone_number, details)
             return result
