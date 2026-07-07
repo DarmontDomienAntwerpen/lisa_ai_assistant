@@ -153,3 +153,42 @@ async def test_events_persists_user_transcript_and_logs_usage(tenant, fake_pool,
     log_usage_mock.assert_awaited_once()
     assert log_usage_mock.call_args.args[-3:] == (10, 5, False)
     assert log_usage_mock.call_args.kwargs["cached_input_tokens"] == 4
+
+
+@pytest.mark.asyncio
+async def test_interrupt_during_audio_sends_truncate_and_yields_interrupted(tenant, fake_pool):
+    """Regressie-test voor een echte bug: bij een WebSocket-verbinding (i.t.t.
+    WebRTC) moet de CLIENT zelf de audio-afspeel-wachtrij opschonen bij een
+    onderbreking — zonder dit blijft de staart van het oude antwoord nog
+    doorspelen bovenop het nieuwe, wat klinkt als een stem die abrupt
+    verandert. Verwacht: conversation.item.truncate wordt gestuurd, en de
+    aanroeper krijgt een {"type": "interrupted"} event om de eigen
+    afspeel-wachtrij (Twilio-clear/browser-buffer) te legen."""
+    conv = RealtimeConversation(tenant, fake_pool, "+32470000001", "voice", audio=True)
+    conv._ws = FakeWS([
+        json.dumps({"type": "response.output_audio.delta", "item_id": "item_1", "delta": "AAAA"}),
+        json.dumps({"type": "input_audio_buffer.speech_started"}),
+    ])
+
+    events = [event async for event in conv.events()]
+
+    assert {"type": "audio_delta", "payload": "AAAA"} in events
+    assert {"type": "interrupted"} in events
+    truncate_msgs = [m for m in conv._ws.sent if m["type"] == "conversation.item.truncate"]
+    assert len(truncate_msgs) == 1
+    assert truncate_msgs[0]["item_id"] == "item_1"
+    assert truncate_msgs[0]["audio_end_ms"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_speech_started_without_active_audio_does_not_send_truncate(tenant, fake_pool):
+    """Als de klant begint te praten zonder dat Lisa nog audio aan het
+    streamen was (het normale geval — geen onderbreking), mag er geen
+    conversation.item.truncate gestuurd worden."""
+    conv = RealtimeConversation(tenant, fake_pool, "+32470000001", "voice", audio=True)
+    conv._ws = FakeWS([json.dumps({"type": "input_audio_buffer.speech_started"})])
+
+    events = [event async for event in conv.events()]
+
+    assert events == []
+    assert conv._ws.sent == []

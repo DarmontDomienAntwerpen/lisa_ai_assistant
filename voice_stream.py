@@ -38,6 +38,12 @@ async def run_media_stream(websocket: WebSocket) -> None:
                     "streamSid": stream_sid,
                     "media": {"payload": event["payload"]},
                 }))
+            elif event["type"] == "interrupted":
+                # Klant onderbrak Lisa: Twilio kan nog audio gebufferd hebben
+                # van het vorige (nu afgekapte) antwoord — "clear" leegt die
+                # buffer, anders speelt de staart van het oude antwoord nog
+                # door bovenop het nieuwe.
+                await websocket.send_text(json.dumps({"event": "clear", "streamSid": stream_sid}))
 
     try:
         async for raw in websocket.iter_text():

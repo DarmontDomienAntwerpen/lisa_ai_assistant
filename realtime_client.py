@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any, AsyncIterator, Optional
 
 import websockets
@@ -47,6 +48,15 @@ class RealtimeConversation:
         self._was_new_at_start = False
         self._tool_calls_this_turn = 0
         self._had_function_call_this_response = False
+        # Voor onderbrekingen (barge-in): bij een WebSocket-verbinding (i.t.t.
+        # WebRTC) is de CLIENT zelf verantwoordelijk voor het opschonen van een
+        # lopende audio-respons zodra de klant begint te praten — anders speelt
+        # de staart van het oude antwoord nog door bovenop het nieuwe, wat
+        # klinkt als een stem die abrupt verandert. We houden bij welk
+        # output-item nu audio streamt en sinds wanneer, om bij een interrupt
+        # een zo goed mogelijke conversation.item.truncate te kunnen sturen.
+        self._current_output_item_id: Optional[str] = None
+        self._current_output_audio_started_at: Optional[float] = None
         self._ws: Optional[Any] = None
 
     async def connect(self) -> None:
@@ -124,6 +134,9 @@ class RealtimeConversation:
 
             if event_type == "input_audio_buffer.speech_started":
                 self._tool_calls_this_turn = 0
+                interrupt_event = await self._handle_possible_interrupt()
+                if interrupt_event:
+                    yield interrupt_event
 
             elif event_type == "conversation.item.input_audio_transcription.completed":
                 transcript = (event.get("transcript") or "").strip()
@@ -134,6 +147,10 @@ class RealtimeConversation:
                     yield {"type": "user_transcript", "text": transcript}
 
             elif event_type == "response.output_audio.delta":
+                item_id = event.get("item_id")
+                if item_id != self._current_output_item_id:
+                    self._current_output_item_id = item_id
+                    self._current_output_audio_started_at = time.monotonic()
                 yield {"type": "audio_delta", "payload": event["delta"]}
 
             elif event_type in ("response.output_audio_transcript.done", "response.output_text.done"):
@@ -152,6 +169,11 @@ class RealtimeConversation:
                         yield tool_event
 
             elif event_type == "response.done":
+                # Deze respons is normaal afgerond (niet onderbroken) — geen
+                # actief output-item meer om bij een volgende speech_started
+                # te moeten afkappen.
+                self._current_output_item_id = None
+                self._current_output_audio_started_at = None
                 usage = (event.get("response") or {}).get("usage") or {}
                 cached_input_tokens = (usage.get("input_token_details") or {}).get("cached_tokens", 0)
                 await usage_log.log_usage(
@@ -180,6 +202,31 @@ class RealtimeConversation:
             elif event_type == "error":
                 logger.error("OpenAI Realtime-fout voor tenant %s: %s", self.tenant.client_id, event.get("error"))
                 yield {"type": "error", "error": event.get("error")}
+
+    async def _handle_possible_interrupt(self) -> Optional[dict[str, Any]]:
+        """De klant begint te praten. Als er nog een audio-respons aan het
+        streamen was, is dat een onderbreking (barge-in): bij een WebSocket-
+        verbinding moet de client zelf conversation.item.truncate sturen zodat
+        OpenAI's eigen gespreksgeschiedenis niet denkt dat de klant de volledige
+        (nooit-afgespeelde) rest van dat antwoord gehoord heeft. We geven ook
+        een {"type": "interrupted"} event terug zodat de aanroeper (Twilio-
+        brug/browser-tool) de EIGEN afspeel-wachtrij kan legen — anders blijft
+        de staart van het oude antwoord nog doorspelen bovenop het nieuwe."""
+        if self._current_output_item_id is None or self._current_output_audio_started_at is None:
+            return None
+
+        audio_end_ms = int((time.monotonic() - self._current_output_audio_started_at) * 1000)
+        item_id = self._current_output_item_id
+        self._current_output_item_id = None
+        self._current_output_audio_started_at = None
+
+        await self._ws.send(json.dumps({
+            "type": "conversation.item.truncate",
+            "item_id": item_id,
+            "content_index": 0,
+            "audio_end_ms": max(audio_end_ms, 0),
+        }))
+        return {"type": "interrupted"}
 
     async def _handle_function_call(self, item: dict[str, Any]) -> Optional[dict[str, Any]]:
         call_id = item["call_id"]

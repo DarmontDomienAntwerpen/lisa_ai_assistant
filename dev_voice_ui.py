@@ -153,6 +153,7 @@ let ctx, ws, source, processor, muteGain;
 let nextPlayTime = 0;
 let micMuted = false;
 let drainCheckTimer = null;
+let activeSources = [];  // geplande AudioBufferSourceNodes, voor interrupt-cleanup
 
 function addLog(text, kind) {{
   const div = document.createElement('div');
@@ -183,6 +184,8 @@ function playPCM16(arrayBuffer) {{
   const startAt = Math.max(ctx.currentTime, nextPlayTime);
   src.start(startAt);
   nextPlayTime = startAt + buffer.duration;
+  activeSources.push(src);
+  src.onended = () => {{ activeSources = activeSources.filter(s => s !== src); }};
 
   // Half-duplex: zonder koptelefoon hoort de mic Lisa's eigen stem uit de
   // speakers en stuurt dat terug als "klant spreekt" — een feedback-lus die
@@ -197,6 +200,20 @@ function playPCM16(arrayBuffer) {{
       drainCheckTimer = null;
     }}
   }}, 100);
+}}
+
+function handleInterrupt() {{
+  // De klant onderbrak Lisa (bv. via de echte Twilio-lijn, of een gaatje in
+  // de half-duplex mute hierboven): stop meteen alle nog geplande/spelende
+  // audio, zodat de staart van het oude antwoord niet doorspeelt bovenop het
+  // nieuwe — anders klinkt dat als een stem die abrupt verandert.
+  for (const src of activeSources) {{
+    try {{ src.stop(); }} catch (e) {{ /* al gestopt/afgelopen, negeren */ }}
+  }}
+  activeSources = [];
+  nextPlayTime = ctx.currentTime;
+  if (drainCheckTimer) {{ clearInterval(drainCheckTimer); drainCheckTimer = null; }}
+  micMuted = false;
 }}
 
 async function start() {{
@@ -232,6 +249,7 @@ async function start() {{
     else if (msg.type === 'escalated') addLog('[escalatie: een medewerker zou nu verwittigd worden]', 'sys');
     else if (msg.type === 'booking_event') addLog('[kapper genotificeerd: afspraak ' + msg.status + ']', 'sys');
     else if (msg.type === 'error') addLog('[fout: ' + JSON.stringify(msg.error) + ']', 'sys');
+    else if (msg.type === 'interrupted') handleInterrupt();
   }};
 
   processor.onaudioprocess = (e) => {{
