@@ -21,8 +21,6 @@ from typing import Any, Optional
 
 import asyncpg
 
-from config import OPENAI_REALTIME_MODEL
-
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS usage_log (
     id SERIAL PRIMARY KEY,
@@ -56,15 +54,21 @@ CREATE TABLE IF NOT EXISTS calls (
 CREATE INDEX IF NOT EXISTS idx_calls_tenant ON calls (tenant_id, started_at);
 """
 
-# USD per 1M tokens (input vers, output) — geblend audio-tarief, zie docstring hierboven.
-# gpt-realtime (GA): $32 input / $64 output per 1M audio-tokens.
+# USD per 1M tokens (input vers, output) — geblend audio-tarief, zie docstring
+# hierboven. Hardcoded per model-naam (niet enkel het huidige OPENAI_REALTIME_MODEL)
+# zodat historische rijen correct geprijsd blijven ook als je van model wisselt.
 PRICING_PER_MILLION_TOKENS: dict[str, tuple[float, float]] = {
-    OPENAI_REALTIME_MODEL: (32.0, 64.0),
+    "gpt-realtime": (32.0, 64.0),
+    "gpt-realtime-2": (32.0, 64.0),
+    "gpt-realtime-2.1": (32.0, 64.0),
+    "gpt-realtime-2.1-mini": (10.0, 20.0),  # ~3.2x goedkoper dan het volle model
 }
 # USD per 1M CACHED input-tokens — apart, veel lager tarief dan vers.
-# gpt-realtime (GA): $0.40 per 1M gecachete audio-input-tokens.
 CACHED_INPUT_PRICING_PER_MILLION_TOKENS: dict[str, float] = {
-    OPENAI_REALTIME_MODEL: 0.40,
+    "gpt-realtime": 0.40,
+    "gpt-realtime-2": 0.40,
+    "gpt-realtime-2.1": 0.40,
+    "gpt-realtime-2.1-mini": 0.30,
 }
 
 
