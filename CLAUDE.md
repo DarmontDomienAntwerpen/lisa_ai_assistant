@@ -191,8 +191,18 @@ komt uit die tenant-config. Eén codebase, oneindig veel klanten en niches.
 
 ## Klant onboarden (nieuwe tenant toevoegen)
 
-1. **Twilio-nummer**: koop/wijs een lokaal nummer toe voor deze zaak in de Twilio
-   console. Zet de "A call comes in" webhook op `POST https://<railway-domein>/voice`.
+1. **Twilio-nummer**: koop/wijs een nummer toe voor deze zaak in de Twilio console.
+   Zet de "A call comes in" webhook op `POST https://<railway-domein>/voice`.
+   **De klant houdt zijn bestaand zaaknummer** — dit Twilio-nummer is enkel intern
+   (tenants.py herkent de zaak via dit nummer). Twee manieren om het bestaande
+   nummer te laten binnenkomen op dit Twilio-nummer:
+   - **Doorschakeling (aanbevolen, snel):** de zaak zet "onvoorwaardelijk
+     doorschakelen" van hun bestaande nummer naar dit Twilio-nummer, via hun eigen
+     telecomprovider. Klanten bellen het vertrouwde nummer, merken niets. Meestal
+     direct in te stellen, mogelijk een kleine doorschakelkost per gesprek.
+   - **Nummerportering (trager, definitief):** het bestaande nummer verhuist
+     volledig naar Twilio — dan is er geen apart nummer meer nodig. Duurt dagen
+     tot weken via de huidige operator.
 2. **Agenda-koppeling**: vandaag enkel Google Calendar — draai
    `python scripts/google_oauth_setup.py` (of gebruik een service-account voor een
    Workspace-agenda) om `calendar_config` te genereren. Zonder agenda-koppeling kan
