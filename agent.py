@@ -86,6 +86,21 @@ Je taak:
 - KALENDER (dag-van-de-week per datum, komende twee weken — reken dag-van-de-
   week NOOIT zelf uit, dat gaat vaak fout; zoek 'm hier op):
   {upcoming_dates}
+  Deze lijst is UITSLUITEND een hulpmiddel om de dag-van-de-week op te zoeken
+  voor de KOMENDE twee weken. Het is GEEN grens op wat je kan doen: noemt de
+  klant een datum die verder in de toekomst ligt dan wat hierboven staat (bv.
+  een concrete datum zoals "16 september" of "over twee maanden"), dan roep je
+  gewoon normaal check_availability/book_appointment/find_upcoming_appointments/
+  cancel_appointment/reschedule_appointment aan met die datum — die tools
+  werken voor EENDER WELKE toekomstige datum, ver of dichtbij. Je hoeft de
+  dag-van-de-week dan niet te kennen om een tool te mogen aanroepen (die hoef
+  je enkel te noemen als de klant er expliciet naar vraagt). Verwar "deze
+  datum staat niet in mijn kalender-hulplijst" NOOIT met "dit kan niet" of
+  "dit moet ik doorgeven aan een collega" — roep ALTIJD eerst de tool zelf aan
+  voor je concludeert dat iets niet lukt; escaleer nooit preventief enkel
+  omdat een datum ver weg is. Manual_follow_up/escalatie is enkel voor als een
+  tool dat zelf expliciet teruggeeft (bv. agenda-koppeling faalt), of bij een
+  echte naam-mismatch — nooit een eigen aanname vooraf.
 - Het telefoonnummer van de klant is al gekend — dat is het nummer waarmee dit
   gesprek binnenkomt. Vraag dat NOOIT expliciet op. Bij een nieuwe klant vraag
   je enkel naar naam (en optioneel e-mail als dat voor deze zaak nuttig is).
@@ -121,6 +136,16 @@ Je taak:
   check_availability geeft BEZETTE periodes terug (busy_periods), niet vrije
   momenten: een lege lijst betekent dat de gevraagde periode volledig VRIJ
   is. Redeneer hierover om vrije tijdstippen aan de klant voor te stellen.
+- Elke tool-aanroep (check_availability, book_appointment,
+  find_upcoming_appointments, cancel_appointment, reschedule_appointment,
+  create_customer) kan even duren — de klant hoort dan niets tot het
+  resultaat er is, en kan dat stilte-gaatje interpreteren als een verbroken
+  lijn en beginnen praten of ophangen. Zeg daarom ALTIJD EERST hardop een
+  kort, natuurlijk tussenzinnetje voor je de tool aanroept — nooit stil een
+  tool aanroepen zonder dat de klant weet dat je iets aan het doen bent. Bv.
+  "Ik kijk het even voor je na, blijf even aan de lijn" of "Momentje, ik zoek
+  dat op". Dit tussenzinnetje telt niet mee voor de bondigheidsregel
+  hierboven, het IS de bondigheid: het vervangt stilte, geen extra uitleg.
 - check_availability en book_appointment zijn TWEE VERSCHILLENDE bedoelingen
   van de klant — nooit door elkaar halen. Vraagt de klant enkel OF een dag/
   tijdstip vrij is ("is donderdag 14u vrij?", "wanneer hebben jullie nog
@@ -139,12 +164,15 @@ Je taak:
 - Bij een BESTAANDE klant: vraag ALTIJD om bevestiging van de achternaam voor
   je book_appointment, cancel_appointment of reschedule_appointment aanroept
   — ook als je denkt de klant al te kennen — en laat die ook hier letter voor
-  letter spellen. Geef die achternaam mee als confirmed_customer_name. Dit
-  voorkomt dat er iets fout gaat bij een gedeeld telefoonnummer (bv.
-  gezinsleden) — al biedt de achternaam alleen minder bescherming dan een
-  volledige naam als gezinsleden dezelfde achternaam delen. Bij een NIEUWE
-  klant heb je de naam al net via de intake gekregen, dat volstaat voor
-  book_appointment.
+  letter spellen. Geef die achternaam mee als confirmed_customer_name — als
+  het GEWONE, samengevoegde woord (bv. "Peeters"), NOOIT als de losse letters
+  met streepjes ertussen (dus NIET "P-E-E-T-E-R-S") — je vraagt om het
+  letter voor letter te SPELLEN puur om de transcriptie te verifiëren, niet
+  om die spelling-notatie zelf door te geven aan de tool. Dit voorkomt dat er
+  iets fout gaat bij een gedeeld telefoonnummer (bv. gezinsleden) — al biedt
+  de achternaam alleen minder bescherming dan een volledige naam als
+  gezinsleden dezelfde achternaam delen. Bij een NIEUWE klant heb je de naam
+  al net via de intake gekregen, dat volstaat voor book_appointment.
 - Komt een tool (book_appointment/cancel_appointment/reschedule_appointment)
   terug met een fout over een naam die niet overeenkomt: ESCALEER NIET
   METEEN. Dit kan een verkeerde klant zijn, maar minstens even vaak gewoon
@@ -320,9 +348,19 @@ def build_voice_instructions(tenant: Any, customer: dict[str, Any] | None, is_ne
     )
 
 
+def _normalize_name(name: str) -> str:
+    # Vergelijking moet ongevoelig zijn voor hoe de naam precies genoteerd is:
+    # het model geeft confirmed_customer_name soms door als het losstaande,
+    # met liggende streepjes gespelde woord (bv. "P-E-E-T-E-R-S") in plaats
+    # van het samengevoegde woord ("Peeters") — allebei correct gespeld, maar
+    # een kale stringvergelijking zou dat dan toch als mismatch zien. Enkel
+    # alfanumerieke tekens, lowercase, telt mee voor de vergelijking.
+    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
+
+
 def _name_mismatch(stored_name: str, claimed_name: str) -> bool:
-    stored = (stored_name or "").strip().lower()
-    claimed = (claimed_name or "").strip().lower()
+    stored = _normalize_name(stored_name)
+    claimed = _normalize_name(claimed_name)
     return not stored or stored != claimed
 
 
@@ -337,7 +375,22 @@ async def execute_tool(
             start = _with_tz(datetime.fromisoformat(tool_input["start"]))
             end = _with_tz(datetime.fromisoformat(tool_input["end"]))
             busy_periods = await adapter.check_availability(start, end)
-            return {"busy_periods": busy_periods, "fully_free": len(busy_periods) == 0}
+            # Google's freebusy-API geeft busy-tijden altijd in UTC terug,
+            # ongeacht de tijdzone van de aanvraag — maar het model redeneert
+            # overal elders in Europe/Brussels lokale tijd (current_datetime,
+            # KALENDER-lijst, de tijden die het zelf doorgeeft). Zonder
+            # conversie hier kan een volledig bezet lokaal tijdslot er voor
+            # het model (foutief) als vrij uitzien, met een 1-2 uur verschil
+            # afhankelijk van winter-/zomertijd — dit NOOIT aan het model zelf
+            # laten omrekenen, dat gaat te vaak fout.
+            local_busy_periods = [
+                {
+                    "busy_start": datetime.fromisoformat(b["busy_start"]).astimezone(DEFAULT_TIMEZONE).isoformat(),
+                    "busy_end": datetime.fromisoformat(b["busy_end"]).astimezone(DEFAULT_TIMEZONE).isoformat(),
+                }
+                for b in busy_periods
+            ]
+            return {"busy_periods": local_busy_periods, "fully_free": len(local_busy_periods) == 0}
         if tool_name == "book_appointment":
             # Vers opgevraagd (kan intussen net aangemaakt zijn door create_customer
             # in dezelfde beurt), maar de naam-check gebruikt was_new_at_turn_start:

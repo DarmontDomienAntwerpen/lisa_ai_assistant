@@ -31,6 +31,15 @@ from integrations.base import Integration, IntegrationError
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
+# get_integration() bouwt per tool-call een VERSE GoogleCalendarIntegration-
+# instantie, dus caching op instance-niveau alleen zou niets opleveren.
+# Deze module-level cache hergebruikt de opgebouwde Google API-client over
+# tool-calls/gesprekken heen (per tenant) — het opbouwen van de client kost
+# meetbare tijd (credentials + discovery), en dat telt elke beurt mee in hoe
+# snel Lisa kan antwoorden na een agenda-tool-call. Credentials-objecten van
+# Google handelen token-refresh zelf al intern af, dus hergebruik is veilig.
+_client_cache: dict[str, Any] = {}
+
 
 class GoogleCalendarIntegration(Integration):
     def __init__(self, tenant: Any, pool: Any):
@@ -42,6 +51,10 @@ class GoogleCalendarIntegration(Integration):
         self._oauth_credentials = config.get("oauth_credentials")
 
     def _client(self):
+        cached = _client_cache.get(self.tenant.client_id)
+        if cached is not None:
+            return cached
+
         if self._oauth_credentials:
             credentials = OAuthCredentials(**self._oauth_credentials)
         elif self._service_account_info:
@@ -50,7 +63,9 @@ class GoogleCalendarIntegration(Integration):
             )
         else:
             raise IntegrationError(f"Geen Google-koppeling geconfigureerd voor tenant {self.tenant.client_id}")
-        return build("calendar", "v3", credentials=credentials, cache_discovery=False)
+        service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
+        _client_cache[self.tenant.client_id] = service
+        return service
 
     async def check_availability(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
         import asyncio

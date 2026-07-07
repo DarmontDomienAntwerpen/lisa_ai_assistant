@@ -75,6 +75,27 @@ async def test_cancel_appointment_succeeds_on_name_match(tenant, fake_pool, monk
 
 
 @pytest.mark.asyncio
+async def test_cancel_appointment_succeeds_when_name_given_as_spelled_out_letters(tenant, fake_pool, monkeypatch):
+    """Regressie-test voor een echte bug (gevonden via live testen): het model
+    geeft confirmed_customer_name soms door als de losse, met streepjes
+    gespelde letters (bv. "P-E-E-T-E-R-S") in plaats van het samengevoegde
+    woord ("Peeters") — allebei correct gespeld, maar een kale
+    stringvergelijking zag dat toch als mismatch en escaleerde onterecht,
+    zelfs als de klant de juiste naam had gegeven."""
+    fake_pool.connection.fetchrow.return_value = None
+    adapter = _fake_adapter([{"booking_id": "abc", "customer_name": "Peeters", "start": "x", "end": "y"}])
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
+
+    result = await agent.execute_tool(
+        tenant, fake_pool, "+32470000001", "cancel_appointment",
+        {"booking_id": "abc", "confirmed_customer_name": "P-E-E-T-E-R-S"},
+    )
+
+    assert result["status"] == "cancelled"
+    adapter.cancel_booking.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_cancel_appointment_unknown_booking_id_is_rejected(tenant, fake_pool, monkeypatch):
     fake_pool.connection.fetchrow.return_value = None
     adapter = _fake_adapter([])
@@ -168,6 +189,30 @@ async def test_book_appointment_proceeds_when_slot_is_free(tenant, fake_pool, mo
 
     assert "error" not in result
     adapter.book.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_check_availability_converts_utc_busy_periods_to_local_time(tenant, fake_pool, monkeypatch):
+    """Regressie-test voor een echte bug (gevonden via live testen): Google's
+    freebusy-API geeft busy-tijden altijd in UTC terug, ongeacht de gevraagde
+    tijdzone. Zonder conversie naar Europe/Brussels kon het model een volledig
+    BEZET lokaal tijdslot als vrij interpreteren (in de winter 1 uur, in de
+    zomer 2 uur verschil) en dat ook zo tegen de klant zeggen — een 's zomers
+    aangevraagd 14:00-15:00 lokaal tijdslot komt overeen met 12:00-13:00 UTC in
+    Google's antwoord; zonder conversie leken die tijden voor het model niet
+    overlappend."""
+    adapter = _fake_adapter([], busy_periods=[{"busy_start": "2026-07-07T12:00:00Z", "busy_end": "2026-07-07T13:00:00Z"}])
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
+
+    result = await agent.execute_tool(
+        tenant, fake_pool, "+32470000001", "check_availability",
+        {"start": "2026-07-07T14:00:00+02:00", "end": "2026-07-07T15:00:00+02:00"},
+    )
+
+    assert result["fully_free"] is False
+    busy = result["busy_periods"][0]
+    assert busy["busy_start"] == "2026-07-07T14:00:00+02:00"
+    assert busy["busy_end"] == "2026-07-07T15:00:00+02:00"
 
 
 @pytest.mark.asyncio
