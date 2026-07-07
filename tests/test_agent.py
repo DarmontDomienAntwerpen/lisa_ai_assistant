@@ -1,123 +1,44 @@
-from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
 import agent
-from config import MODEL_DEFAULT, MODEL_ESCALATION
 
 
-def test_select_model_defaults_to_haiku():
-    assert agent.select_model("Kan ik morgen een afspraak maken?") == MODEL_DEFAULT
+def _fake_adapter(bookings, cancel_result=None, lookup_customer=None, book_result=None, busy_periods=None):
+    from types import SimpleNamespace
 
-
-def test_select_model_escalates_on_complaint_keywords():
-    assert agent.select_model("Ik heb een klacht over mijn vorige afspraak") == MODEL_ESCALATION
-    assert agent.select_model("Ik wil met een mens spreken, dringend") == MODEL_ESCALATION
-
-
-def test_select_model_always_escalates_for_existing_customer():
-    """Trefwoorden zijn te broos (Vlaamse spreektaal mist ze vaak, bv. "ik kan
-    ni komen" i.p.v. "niet komen") om een bestaande, mogelijk al geboekte
-    klant op te vertrouwen. Een bestaande klant krijgt daarom altijd Sonnet,
-    ongeacht wat er letterlijk staat."""
-    assert agent.select_model("ik kan ni komen", is_new=False) == MODEL_ESCALATION
-    assert agent.select_model("hallo", is_new=False) == MODEL_ESCALATION
-    assert agent.select_model("hallo", is_new=True) == MODEL_DEFAULT
-
-
-def _text_response(text: str, input_tokens=10, output_tokens=5):
     return SimpleNamespace(
-        stop_reason="end_turn",
-        content=[SimpleNamespace(type="text", text=text)],
-        usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
-    )
-
-
-def _tool_use_response(tool_name: str, tool_input: dict, tool_use_id="tool_1"):
-    return SimpleNamespace(
-        stop_reason="tool_use",
-        content=[SimpleNamespace(type="tool_use", id=tool_use_id, name=tool_name, input=tool_input)],
-        usage=SimpleNamespace(input_tokens=10, output_tokens=5),
-    )
-
-
-@pytest.mark.asyncio
-async def test_handle_turn_returns_text_reply_and_persists_history(tenant, fake_pool, monkeypatch):
-    fake_pool.connection.fetchrow.return_value = None  # nieuwe klant, geen conversation history
-    fake_pool.connection.fetch.return_value = []
-
-    mock_create = AsyncMock(return_value=_text_response("Hallo! Ben je een nieuwe klant?"))
-    monkeypatch.setattr(agent._client.messages, "create", mock_create)
-
-    reply, escalated, booking_events = await agent.handle_turn(tenant, fake_pool, "+32470000001", "whatsapp", "Hoi")
-
-    assert reply == "Hallo! Ben je een nieuwe klant?"
-    assert escalated is False
-    # twee berichten gepersisteerd: het inkomende bericht van de klant + het antwoord
-    insert_calls = [c for c in fake_pool.connection.execute.call_args_list if "INSERT INTO conversations" in c.args[0]]
-    assert len(insert_calls) == 2
-
-
-@pytest.mark.asyncio
-async def test_handle_turn_executes_tool_calls_before_final_reply(tenant, fake_pool, monkeypatch):
-    fake_pool.connection.fetchrow.return_value = None
-    fake_pool.connection.fetch.return_value = []
-
-    mock_create = AsyncMock(
-        side_effect=[
-            _tool_use_response("escalate_to_human", {"reason": "klacht"}),
-            _text_response("Een medewerker neemt contact op."),
-        ]
-    )
-    monkeypatch.setattr(agent._client.messages, "create", mock_create)
-
-    reply, escalated, booking_events = await agent.handle_turn(tenant, fake_pool, "+32470000001", "whatsapp", "Ik heb een klacht")
-
-    assert reply == "Een medewerker neemt contact op."
-    assert escalated is True
-    assert mock_create.call_count == 2
-
-
-@pytest.mark.asyncio
-async def test_handle_turn_never_returns_silently_on_api_failure(tenant, fake_pool, monkeypatch):
-    fake_pool.connection.fetchrow.return_value = None
-    fake_pool.connection.fetch.return_value = []
-
-    import anthropic
-
-    mock_create = AsyncMock(side_effect=anthropic.APIConnectionError(request=SimpleNamespace()))
-    monkeypatch.setattr(agent._client.messages, "create", mock_create)
-
-    reply, escalated, booking_events = await agent.handle_turn(tenant, fake_pool, "+32470000001", "whatsapp", "Hoi")
-
-    assert reply  # nooit een lege/stille reactie
-    assert escalated is True
-
-
-@pytest.mark.asyncio
-async def test_handle_turn_stops_after_max_tool_iterations(tenant, fake_pool, monkeypatch):
-    fake_pool.connection.fetchrow.return_value = None
-    fake_pool.connection.fetch.return_value = []
-
-    mock_create = AsyncMock(return_value=_tool_use_response("check_availability", {"start": "2026-07-03T09:00:00", "end": "2026-07-03T10:00:00"}))
-    monkeypatch.setattr(agent._client.messages, "create", mock_create)
-
-    reply, escalated, booking_events = await agent.handle_turn(tenant, fake_pool, "+32470000001", "whatsapp", "Wanneer kan ik langskomen?")
-
-    assert reply
-    assert escalated is True
-    assert mock_create.call_count == agent.MAX_TOOL_ITERATIONS
-
-
-def _fake_adapter(bookings, cancel_result=None, lookup_customer=None, book_result=None):
-    return SimpleNamespace(
+        check_availability=AsyncMock(return_value=busy_periods or []),
         find_bookings=AsyncMock(return_value=bookings),
         cancel_booking=AsyncMock(return_value=cancel_result or {"status": "cancelled"}),
         reschedule_booking=AsyncMock(return_value={"status": "rescheduled"}),
         lookup_customer=AsyncMock(return_value=lookup_customer),
         book=AsyncMock(return_value=book_result or {"status": "confirmed", "booking_id": "new1"}),
     )
+
+
+def test_build_voice_instructions_includes_business_name_and_customer_context(tenant):
+    instructions = agent.build_voice_instructions(tenant, None, is_new=True)
+    assert tenant.business_name in instructions
+    assert "NIEUWE klant" in instructions
+
+    instructions_existing = agent.build_voice_instructions(tenant, {"name": "Jan"}, is_new=False)
+    assert "BESTAANDE klant" in instructions_existing
+    assert "Jan" in instructions_existing
+
+
+def test_build_voice_instructions_includes_niche_and_out_of_scope_guardrail(tenant):
+    """Regressie-test: tenant.niche moet echt in de instructies terechtkomen —
+    zonder dit weet Lisa niet dat een verzoek buiten haar sector valt (bv. een
+    kapsalon die om een garage-afspraak gevraagd wordt) en kan ze onterecht
+    check_availability/book_appointment aanroepen voor iets wat niet bij de
+    zaak hoort."""
+    instructions = agent.build_voice_instructions(tenant, None, is_new=True)
+    assert tenant.niche in instructions
+    assert "Roep in dat geval GEEN" in instructions
+    assert "check_availability" in instructions
+    assert "book_appointment aan" in instructions
 
 
 @pytest.mark.asyncio
@@ -129,7 +50,7 @@ async def test_cancel_appointment_blocks_on_name_mismatch(tenant, fake_pool, mon
     adapter = _fake_adapter([{"booking_id": "abc", "customer_name": "Jan Peeters", "start": "x", "end": "y"}])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
 
-    result = await agent._execute_tool(
+    result = await agent.execute_tool(
         tenant, fake_pool, "+32470000001", "cancel_appointment",
         {"booking_id": "abc", "confirmed_customer_name": "Foute Naam"},
     )
@@ -144,7 +65,7 @@ async def test_cancel_appointment_succeeds_on_name_match(tenant, fake_pool, monk
     adapter = _fake_adapter([{"booking_id": "abc", "customer_name": "Jan Peeters", "start": "x", "end": "y"}])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
 
-    result = await agent._execute_tool(
+    result = await agent.execute_tool(
         tenant, fake_pool, "+32470000001", "cancel_appointment",
         {"booking_id": "abc", "confirmed_customer_name": "jan peeters"},  # andere hoofdlettering
     )
@@ -159,35 +80,12 @@ async def test_cancel_appointment_unknown_booking_id_is_rejected(tenant, fake_po
     adapter = _fake_adapter([])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
 
-    result = await agent._execute_tool(
+    result = await agent.execute_tool(
         tenant, fake_pool, "+32470000001", "cancel_appointment",
         {"booking_id": "onbestaand", "confirmed_customer_name": "Jan Peeters"},
     )
 
     assert "error" in result
-    adapter.cancel_booking.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_handle_turn_escalates_when_identity_check_fails(tenant, fake_pool, monkeypatch):
-    """Een geweigerde annulering door naam-mismatch moet het hele gesprek als
-    escalated markeren, zodat de escalation_contact verwittigd wordt."""
-    fake_pool.connection.fetchrow.return_value = None
-    fake_pool.connection.fetch.return_value = []
-    adapter = _fake_adapter([{"booking_id": "abc", "customer_name": "Jan Peeters", "start": "x", "end": "y"}])
-    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
-
-    mock_create = AsyncMock(
-        side_effect=[
-            _tool_use_response("cancel_appointment", {"booking_id": "abc", "confirmed_customer_name": "Foute Naam"}),
-            _text_response("Dat kan ik niet bevestigen, een medewerker neemt contact op."),
-        ]
-    )
-    monkeypatch.setattr(agent._client.messages, "create", mock_create)
-
-    reply, escalated, booking_events = await agent.handle_turn(tenant, fake_pool, "+32470000001", "whatsapp", "Annuleer mijn afspraak")
-
-    assert escalated is True
     adapter.cancel_booking.assert_not_called()
 
 
@@ -203,7 +101,7 @@ async def test_book_appointment_blocks_on_name_mismatch_for_existing_customer(te
         AsyncMock(return_value=({"phone_number": "+32470000001", "name": "Jan Peeters"}, False)),
     )
 
-    result = await agent._execute_tool(
+    result = await agent.execute_tool(
         tenant, fake_pool, "+32470000001", "book_appointment",
         {"start": "2026-07-07T09:00:00", "end": "2026-07-07T09:30:00", "summary": "Kapbeurt", "confirmed_customer_name": "Foute Naam"},
         was_new_at_turn_start=False,
@@ -227,7 +125,7 @@ async def test_book_appointment_skips_name_check_for_customer_created_this_turn(
         AsyncMock(return_value=({"phone_number": "+32470000001", "name": "Jef Bakkers"}, False)),
     )
 
-    result = await agent._execute_tool(
+    result = await agent.execute_tool(
         tenant, fake_pool, "+32470000001", "book_appointment",
         {"start": "2026-07-07T09:00:00", "end": "2026-07-07T09:30:00", "summary": "Kapbeurt"},
         was_new_at_turn_start=True,
@@ -238,24 +136,58 @@ async def test_book_appointment_skips_name_check_for_customer_created_this_turn(
 
 
 @pytest.mark.asyncio
-async def test_handle_turn_reports_booking_event_on_successful_cancel(tenant, fake_pool, monkeypatch):
-    """De kapper moet apart genotificeerd kunnen worden bij een succesvolle
-    annulering, los van escalatie — main.py leest dit uit booking_events."""
-    fake_pool.connection.fetchrow.return_value = None
-    fake_pool.connection.fetch.return_value = []
-    adapter = _fake_adapter([{"booking_id": "abc", "customer_name": "Jan Peeters", "start": "x", "end": "y"}])
+async def test_book_appointment_refuses_when_slot_already_busy(tenant, fake_pool, monkeypatch):
+    """Regressie-test: book_appointment mag nooit enkel op het model vertrouwen
+    om eerst check_availability aan te roepen. Een klant die manueel al iets
+    in de agenda zet, mag nooit dubbel geboekt worden door Lisa."""
+    adapter = _fake_adapter([], busy_periods=[{"busy_start": "2026-07-07T13:00:00+02:00", "busy_end": "2026-07-07T13:30:00+02:00"}])
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
+    monkeypatch.setattr(agent, "find_or_flag_new", AsyncMock(return_value=(None, True)))
+
+    result = await agent.execute_tool(
+        tenant, fake_pool, "+32470000001", "book_appointment",
+        {"start": "2026-07-07T13:00:00", "end": "2026-07-07T13:30:00", "summary": "Kapbeurt"},
+        was_new_at_turn_start=True,
+    )
+
+    assert "error" in result
+    adapter.book.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_book_appointment_proceeds_when_slot_is_free(tenant, fake_pool, monkeypatch):
+    adapter = _fake_adapter([], busy_periods=[])
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
+    monkeypatch.setattr(agent, "find_or_flag_new", AsyncMock(return_value=(None, True)))
+
+    result = await agent.execute_tool(
+        tenant, fake_pool, "+32470000001", "book_appointment",
+        {"start": "2026-07-07T13:00:00", "end": "2026-07-07T13:30:00", "summary": "Kapbeurt"},
+        was_new_at_turn_start=True,
+    )
+
+    assert "error" not in result
+    adapter.book.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_escalate_to_human_returns_escalation_contact(tenant, fake_pool, monkeypatch):
+    adapter = _fake_adapter([])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
 
-    mock_create = AsyncMock(
-        side_effect=[
-            _tool_use_response("cancel_appointment", {"booking_id": "abc", "confirmed_customer_name": "Jan Peeters"}),
-            _text_response("Je afspraak is geannuleerd."),
-        ]
+    result = await agent.execute_tool(
+        tenant, fake_pool, "+32470000001", "escalate_to_human", {"reason": "klacht"}
     )
-    monkeypatch.setattr(agent._client.messages, "create", mock_create)
 
-    reply, escalated, booking_events = await agent.handle_turn(tenant, fake_pool, "+32470000001", "whatsapp", "Annuleer mijn afspraak")
+    assert result["status"] == "escalated"
+    assert result["escalation_contact"] == tenant.escalation_contact
 
-    assert escalated is False
-    assert len(booking_events) == 1
-    assert booking_events[0]["type"] == "cancelled"
+
+@pytest.mark.asyncio
+async def test_unknown_tool_returns_error(tenant, fake_pool, monkeypatch):
+    adapter = _fake_adapter([])
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
+
+    result = await agent.execute_tool(tenant, fake_pool, "+32470000001", "carrier_pigeon", {})
+
+    assert "error" in result

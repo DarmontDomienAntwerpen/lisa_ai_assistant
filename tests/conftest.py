@@ -1,4 +1,4 @@
-"""Gedeelde test-fixtures. Geen echte Postgres/Twilio/Anthropic-calls in de
+"""Gedeelde test-fixtures. Geen echte Postgres/Twilio/OpenAI-calls in de
 testsuite — alles wordt gemockt, zodat tests snel en deterministisch zijn."""
 from __future__ import annotations
 
@@ -12,9 +12,7 @@ from cryptography.fernet import Fernet
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
-os.environ.setdefault("TWILIO_ACCOUNT_SID", "test-sid")
-os.environ.setdefault("TWILIO_AUTH_TOKEN", "test-token")
+os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("CONVERSATION_ENCRYPTION_KEY", Fernet.generate_key().decode())
 
@@ -28,7 +26,6 @@ def tenant() -> Tenant:
         business_name="Kapsalon De Vries",
         niche="kapper",
         twilio_number="+3234000001",
-        whatsapp_number="whatsapp:+3234000001",
         calendar_type="none",
         calendar_config={},
         system_prompt_extra="Wees warm en informeel.",

@@ -1,19 +1,21 @@
 """Dev-tool: chat met Lisa in de terminal, zonder Twilio.
 
 Gebruik: python dev_chat.py
-Zet een test-tenant klaar (calendar_type="none") en laat je typen alsof je
-whatsappt. Niet onderdeel van de productiecode — puur om lokaal te testen.
+Zet een test-tenant klaar (calendar_type="none") en praat in tekst met exact
+dezelfde OpenAI Realtime-sessie/tool-laag als een echte oproep (audio=False
+i.p.v. audio=True) — zie realtime_client.RealtimeConversation. Niet
+onderdeel van de productiecode — puur om lokaal te testen.
 """
 from __future__ import annotations
 
 import asyncio
 
-from agent import handle_turn
-from config import close_pool, get_pool
 import conversation_store
 import customer_lookup
 import tenants
 import usage_log
+from config import close_pool, get_pool
+from realtime_client import RealtimeConversation
 from tenants import Tenant
 
 TEST_TENANT = Tenant(
@@ -21,7 +23,6 @@ TEST_TENANT = Tenant(
     business_name="Kapsalon De Vries",
     niche="kapper",
     twilio_number="+3234000009",
-    whatsapp_number="whatsapp:+3234000009",
     calendar_type="none",
     calendar_config={},
     system_prompt_extra="Wees warm en informeel, typisch Vlaams.",
@@ -39,21 +40,42 @@ async def main() -> None:
     await usage_log.init_schema(pool)
     await tenants.upsert_tenant(pool, TEST_TENANT)
 
-    print(f"--- Chatten met Lisa ({TEST_TENANT.business_name}) — typ 'stop' om te stoppen ---")
-    while True:
-        user_message = input("Jij: ").strip()
-        if user_message.lower() in {"stop", "exit", "quit"}:
-            break
-        if not user_message:
-            continue
-        reply, escalated, booking_events = await handle_turn(TEST_TENANT, pool, TEST_PHONE_NUMBER, "terminal", user_message)
-        print(f"Lisa: {reply}")
-        if escalated:
-            print("      [escalatie: een medewerker zou nu verwittigd worden]")
-        for event in booking_events:
-            print(f"      [kapper genotificeerd: afspraak {event['type']}]")
+    conversation = RealtimeConversation(TEST_TENANT, pool, TEST_PHONE_NUMBER, "terminal", audio=False)
+    await conversation.connect()
 
-    await close_pool()
+    reply_ready = asyncio.Event()
+
+    async def print_events() -> None:
+        async for event in conversation.events():
+            if event["type"] == "assistant_text":
+                print(f"Lisa: {event['text']}")
+                reply_ready.set()
+            elif event["type"] == "escalated":
+                print("      [escalatie: een medewerker zou nu verwittigd worden]")
+            elif event["type"] == "booking_event":
+                print(f"      [kapper genotificeerd: afspraak {event['status']}]")
+
+    listener = asyncio.create_task(print_events())
+
+    print(f"--- Chatten met Lisa ({TEST_TENANT.business_name}) — typ 'stop' om te stoppen ---")
+    await conversation.start()
+    await reply_ready.wait()
+    reply_ready.clear()
+
+    try:
+        while True:
+            user_message = (await asyncio.to_thread(input, "Jij: ")).strip()
+            if user_message.lower() in {"stop", "exit", "quit"}:
+                break
+            if not user_message:
+                continue
+            await conversation.send_text(user_message)
+            await reply_ready.wait()
+            reply_ready.clear()
+    finally:
+        listener.cancel()
+        await conversation.close()
+        await close_pool()
 
 
 if __name__ == "__main__":

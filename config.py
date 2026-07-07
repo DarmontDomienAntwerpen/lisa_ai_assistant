@@ -13,18 +13,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- Anthropic ---
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-MODEL_DEFAULT = "claude-haiku-4-5-20251001"
-MODEL_ESCALATION = "claude-sonnet-5"
+# --- OpenAI Realtime (voert het volledige gesprek: spraak, beslissen, tools) ---
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_REALTIME_MODEL = os.environ.get("OPENAI_REALTIME_MODEL", "gpt-realtime")
+OPENAI_REALTIME_VOICE = os.environ.get("OPENAI_REALTIME_VOICE", "alloy")
 MAX_TOOL_ITERATIONS = 6  # hard cap zodat een gesprek nooit oneindig doorloopt
-
-# --- Twilio ---
-TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
-TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
-# Meta/Twilio-goedgekeurde template voor het bericht na een gemiste oproep
-TWILIO_MISSED_CALL_TEMPLATE_SID = os.environ.get("TWILIO_MISSED_CALL_TEMPLATE_SID", "")
-CALL_RING_TIMEOUT_SECONDS = int(os.environ.get("CALL_RING_TIMEOUT_SECONDS", "15"))  # ~3x overgaan
 
 # --- Database ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
@@ -38,6 +31,11 @@ PORT = int(os.environ.get("PORT", "8000"))
 CONVERSATION_HISTORY_LIMIT = int(os.environ.get("CONVERSATION_HISTORY_LIMIT", "20"))
 # GDPR: expliciete retentietermijn voor gespreksdata
 CONVERSATION_RETENTION_DAYS = int(os.environ.get("CONVERSATION_RETENTION_DAYS", "180"))
+
+# --- Dashboard (intern, HTTP Basic Auth — geen multi-user login, enkel voor
+# Darmont Digital zelf om per tenant calls/kosten/escalaties op te volgen) ---
+DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "admin")
+DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
 
 _pool: Optional[asyncpg.Pool] = None
 

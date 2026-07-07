@@ -11,6 +11,7 @@ i.p.v. calendar_type="none".
 """
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,12 +21,12 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from agent import handle_turn
-from config import close_pool, get_pool
 import conversation_store
 import customer_lookup
 import tenants
 import usage_log
+from config import close_pool, get_pool
+from realtime_client import RealtimeConversation
 from tenants import Tenant
 
 TOKEN_PATH = Path(__file__).resolve().parent / "dev_google_token.json"
@@ -46,7 +47,6 @@ def _load_tenant() -> Tenant:
         business_name="Kapsalon De Vries",
         niche="kapper",
         twilio_number="+3234000008",
-        whatsapp_number="whatsapp:+3234000008",
         calendar_type="google_calendar",
         calendar_config={"calendar_id": CALENDAR_ID, "oauth_credentials": oauth_credentials},
         system_prompt_extra="Wees warm en informeel, typisch Vlaams.",
@@ -56,17 +56,33 @@ def _load_tenant() -> Tenant:
 
 TEST_TENANT = _load_tenant()
 
+_conversation: RealtimeConversation | None = None
+_events: asyncio.Queue = asyncio.Queue()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _conversation
     pool = await get_pool()
     await tenants.init_schema(pool)
     await customer_lookup.init_schema(pool)
     await conversation_store.init_schema(pool)
     await usage_log.init_schema(pool)
     await tenants.upsert_tenant(pool, TEST_TENANT)
+
+    _conversation = RealtimeConversation(TEST_TENANT, pool, TEST_PHONE_NUMBER, "dev-ui", audio=False)
+    await _conversation.connect()
+    listener = asyncio.create_task(_consume_events())
     yield
+    listener.cancel()
+    await _conversation.close()
     await close_pool()
+
+
+async def _consume_events() -> None:
+    assert _conversation is not None
+    async for event in _conversation.events():
+        await _events.put(event)
 
 
 app = FastAPI(title="Lisa dev-chat (Google Calendar)", lifespan=lifespan)
@@ -78,9 +94,19 @@ class ChatRequest(BaseModel):
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest) -> dict:
-    pool = await get_pool()
-    reply, escalated, booking_events = await handle_turn(TEST_TENANT, pool, TEST_PHONE_NUMBER, "dev-ui", req.message)
-    return {"reply": reply, "escalated": escalated, "booking_events": booking_events}
+    assert _conversation is not None
+    await _conversation.send_text(req.message)
+
+    escalated = False
+    booking_events = []
+    while True:
+        event = await _events.get()
+        if event["type"] == "assistant_text":
+            return {"reply": event["text"], "escalated": escalated, "booking_events": booking_events}
+        if event["type"] == "escalated":
+            escalated = True
+        elif event["type"] == "booking_event":
+            booking_events.append(event)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -91,7 +117,7 @@ async def index() -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lisa — dev chat (WhatsApp-stijl)</title>
+<title>Lisa — dev chat (tekstmodus voor voice-brain)</title>
 <style>
   :root {{ color-scheme: light; }}
   body {{

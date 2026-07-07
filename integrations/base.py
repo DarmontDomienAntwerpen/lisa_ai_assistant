@@ -69,14 +69,6 @@ def get_integration(tenant: Any, pool: Any) -> Integration:
         from integrations.google_calendar import GoogleCalendarIntegration
 
         return GoogleCalendarIntegration(tenant, pool)
-    if tenant.calendar_type == "outlook_calendar":
-        from integrations.outlook_calendar import OutlookCalendarIntegration
-
-        return OutlookCalendarIntegration(tenant, pool)
-    if tenant.calendar_type == "custom_api":
-        from integrations.generic_rest_api import GenericRestApiIntegration
-
-        return GenericRestApiIntegration(tenant, pool)
     if tenant.calendar_type == "none":
         from integrations.none import NoIntegration
 

@@ -10,8 +10,8 @@ import conversation_store
 import customer_lookup
 import tenants
 import usage_log
-from agent import handle_turn
 from config import close_pool, get_pool
+from realtime_client import RealtimeConversation
 from tenants import Tenant
 
 TENANT = Tenant(
@@ -19,7 +19,6 @@ TENANT = Tenant(
     business_name="Kapsalon De Vries",
     niche="kapper",
     twilio_number="+3234000009",
-    whatsapp_number="whatsapp:+3234000009",
     calendar_type="none",
     calendar_config={},
     system_prompt_extra="Wees warm en informeel, typisch Vlaams.",
@@ -29,11 +28,34 @@ TENANT = Tenant(
 
 async def run_case(pool, label: str, phone: str, messages: list[str]) -> None:
     print(f"\n===== {label} (nummer: {phone}) =====")
-    for msg in messages:
-        print(f"Klant: {msg}")
-        reply, escalated, booking_events = await handle_turn(TENANT, pool, phone, "terminal", msg)
-        print(f"Lisa : {reply}")
-        print(f"       [escalated={escalated}, booking_events={booking_events}]")
+    conversation = RealtimeConversation(TENANT, pool, phone, "terminal", audio=False)
+    await conversation.connect()
+
+    reply_ready = asyncio.Event()
+    state = {"reply": "", "escalated": False, "booking_events": []}
+
+    async def print_events() -> None:
+        async for event in conversation.events():
+            if event["type"] == "assistant_text":
+                state["reply"] = event["text"]
+                reply_ready.set()
+            elif event["type"] == "escalated":
+                state["escalated"] = True
+            elif event["type"] == "booking_event":
+                state["booking_events"].append(event)
+
+    listener = asyncio.create_task(print_events())
+    try:
+        for msg in messages:
+            print(f"Klant: {msg}")
+            reply_ready.clear()
+            await conversation.send_text(msg)
+            await reply_ready.wait()
+            print(f"Lisa : {state['reply']}")
+            print(f"       [escalated={state['escalated']}, booking_events={state['booking_events']}]")
+    finally:
+        listener.cancel()
+        await conversation.close()
 
 
 async def main() -> None:

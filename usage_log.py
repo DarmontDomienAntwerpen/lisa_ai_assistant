@@ -1,15 +1,24 @@
 """Tokens, kosten, kanaal, escalaties — per tenant, vanaf dag 1.
 
 Geen dashboard nu, wel de data ervoor. Prijzen hieronder zijn USD per 1M
-tokens en moeten in sync blijven met de actuele Anthropic-pricing.
+tokens en moeten in sync blijven met de actuele OpenAI Realtime-pricing.
+
+LET OP (bewuste vereenvoudiging): OpenAI Realtime rapporteert audio- en
+tekst-tokens apart (met elk een eigen, sterk verschillend tarief — audio is
+een veelvoud van tekst), maar we loggen hier enkel de gecombineerde
+input/output-totalen die `response.done` teruggeeft. cost_usd hieronder is
+dus een indicatie op basis van een geblend audio-tarief, geen exacte
+facturatie. Verfijnen (aparte kolom per token-type) is nodig zodra
+kosten-per-klant een harde vereiste wordt.
 """
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime
+from typing import Any, Optional
 
 import asyncpg
 
-from config import MODEL_DEFAULT, MODEL_ESCALATION
+from config import OPENAI_REALTIME_MODEL
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS usage_log (
@@ -25,12 +34,25 @@ CREATE TABLE IF NOT EXISTS usage_log (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_usage_log_tenant ON usage_log (tenant_id, created_at);
+
+-- usage_log logt per Realtime-beurt (kan meerdere rijen per gesprek zijn) —
+-- dat volstaat niet om "hoeveel OPROEPEN deze maand" te beantwoorden, wat
+-- rechtstreeks de klantprijzen (call-volume-afhankelijk) onderbouwt. calls
+-- logt daarom apart, één rij per opgezette RealtimeConversation-sessie.
+CREATE TABLE IF NOT EXISTS calls (
+    id SERIAL PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    phone_number TEXT NOT NULL,
+    channel TEXT NOT NULL,
+    started_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_calls_tenant ON calls (tenant_id, started_at);
 """
 
-# USD per 1M tokens (input, output)
+# USD per 1M tokens (input, output) — geblend audio-tarief, zie docstring hierboven.
+# gpt-realtime (GA): $32 input / $64 output per 1M audio-tokens.
 PRICING_PER_MILLION_TOKENS: dict[str, tuple[float, float]] = {
-    MODEL_DEFAULT: (1.0, 5.0),
-    MODEL_ESCALATION: (3.0, 15.0),
+    OPENAI_REALTIME_MODEL: (32.0, 64.0),
 }
 
 
@@ -72,9 +94,21 @@ async def log_usage(
         )
 
 
-async def get_tenant_usage_summary(pool: asyncpg.Pool, tenant_id: str) -> dict[str, Any]:
+async def log_call_start(pool: asyncpg.Pool, tenant_id: str, phone_number: str, channel: str) -> None:
+    """Eén rij per opgezette RealtimeConversation-sessie — dit is de teller
+    voor "aantal oproepen", los van usage_log (dat per gespreksbeurt logt)."""
     async with pool.acquire() as conn:
-        record = await conn.fetchrow(
+        await conn.execute(
+            "INSERT INTO calls (tenant_id, phone_number, channel) VALUES ($1, $2, $3)",
+            tenant_id,
+            phone_number,
+            channel,
+        )
+
+
+async def get_tenant_usage_summary(pool: asyncpg.Pool, tenant_id: str, since: Optional[datetime] = None) -> dict[str, Any]:
+    async with pool.acquire() as conn:
+        usage_record = await conn.fetchrow(
             """
             SELECT
                 COUNT(*) AS conversation_turns,
@@ -82,8 +116,17 @@ async def get_tenant_usage_summary(pool: asyncpg.Pool, tenant_id: str) -> dict[s
                 COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
                 COALESCE(SUM(cost_usd), 0) AS total_cost_usd,
                 COALESCE(SUM(CASE WHEN escalated THEN 1 ELSE 0 END), 0) AS escalations
-            FROM usage_log WHERE tenant_id = $1
+            FROM usage_log WHERE tenant_id = $1 AND ($2::timestamptz IS NULL OR created_at >= $2)
             """,
             tenant_id,
+            since,
         )
-    return dict(record)
+        calls_record = await conn.fetchrow(
+            """
+            SELECT COUNT(*) AS call_count, MAX(started_at) AS last_call_at
+            FROM calls WHERE tenant_id = $1 AND ($2::timestamptz IS NULL OR started_at >= $2)
+            """,
+            tenant_id,
+            since,
+        )
+    return {**dict(usage_record), **dict(calls_record)}
