@@ -36,7 +36,7 @@ def test_build_voice_instructions_includes_niche_and_out_of_scope_guardrail(tena
     zaak hoort."""
     instructions = agent.build_voice_instructions(tenant, None, is_new=True)
     assert tenant.niche in instructions
-    assert "Roep in dat geval GEEN" in instructions
+    assert "GEEN check_availability of book_appointment aan" in instructions
     assert "check_availability" in instructions
     assert "book_appointment aan" in instructions
 
