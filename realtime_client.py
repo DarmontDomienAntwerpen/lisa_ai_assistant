@@ -153,6 +153,7 @@ class RealtimeConversation:
 
             elif event_type == "response.done":
                 usage = (event.get("response") or {}).get("usage") or {}
+                cached_input_tokens = (usage.get("input_token_details") or {}).get("cached_tokens", 0)
                 await usage_log.log_usage(
                     self.pool,
                     self.tenant.client_id,
@@ -162,6 +163,7 @@ class RealtimeConversation:
                     usage.get("input_tokens", 0),
                     usage.get("output_tokens", 0),
                     self.escalated,
+                    cached_input_tokens=cached_input_tokens,
                 )
                 # Eén response kan MEERDERE function-calls bevatten (parallelle
                 # tool-calls). Pas hier, na response.done, één response.create

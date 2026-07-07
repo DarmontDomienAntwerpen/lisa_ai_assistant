@@ -20,6 +20,17 @@ def test_calculate_cost_usd_unknown_model_defaults_to_zero():
     assert calculate_cost_usd("unknown-model", 1000, 1000) == 0.0
 
 
+def test_calculate_cost_usd_cached_input_is_much_cheaper():
+    """Regressie-test voor een echte overschatting: een Realtime-sessie stuurt
+    bij elke beurt de volledige audio-geschiedenis opnieuw als input, maar
+    OpenAI cachet dat automatisch tegen een ~80x lager tarief. Zonder dit te
+    verrekenen leek een kort testgesprek van 12 beurten $1.38 te kosten,
+    terwijl een groot deel daarvan gecached (en dus veel goedkoper) was."""
+    fully_fresh = calculate_cost_usd(OPENAI_REALTIME_MODEL, 10_000, 0, cached_input_tokens=0)
+    fully_cached = calculate_cost_usd(OPENAI_REALTIME_MODEL, 10_000, 0, cached_input_tokens=10_000)
+    assert fully_cached < fully_fresh / 10  # cache-tarief ($0.40/1M) << vol tarief ($32/1M)
+
+
 @pytest.mark.asyncio
 async def test_log_call_start_inserts_into_calls_table(fake_pool):
     await log_call_start(fake_pool, "kapper_devries", "+32470000001", "voice")

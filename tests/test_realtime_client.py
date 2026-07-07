@@ -140,7 +140,10 @@ async def test_events_persists_user_transcript_and_logs_usage(tenant, fake_pool,
     conv = RealtimeConversation(tenant, fake_pool, "+32470000001", "voice", audio=True)
     conv._ws = FakeWS([
         json.dumps({"type": "conversation.item.input_audio_transcription.completed", "transcript": "Hoi"}),
-        json.dumps({"type": "response.done", "response": {"usage": {"input_tokens": 10, "output_tokens": 5}}}),
+        json.dumps({
+            "type": "response.done",
+            "response": {"usage": {"input_tokens": 10, "output_tokens": 5, "input_token_details": {"cached_tokens": 4}}},
+        }),
     ])
 
     events = [event async for event in conv.events()]
@@ -149,3 +152,4 @@ async def test_events_persists_user_transcript_and_logs_usage(tenant, fake_pool,
     append_mock.assert_awaited_once()
     log_usage_mock.assert_awaited_once()
     assert log_usage_mock.call_args.args[-3:] == (10, 5, False)
+    assert log_usage_mock.call_args.kwargs["cached_input_tokens"] == 4

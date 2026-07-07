@@ -8,8 +8,11 @@ tekst-tokens apart (met elk een eigen, sterk verschillend tarief — audio is
 een veelvoud van tekst), maar we loggen hier enkel de gecombineerde
 input/output-totalen die `response.done` teruggeeft. cost_usd hieronder is
 dus een indicatie op basis van een geblend audio-tarief, geen exacte
-facturatie. Verfijnen (aparte kolom per token-type) is nodig zodra
-kosten-per-klant een harde vereiste wordt.
+facturatie. Wel al verrekend: automatische prompt-caching (OpenAI hergebruikt
+de audio-geschiedenis van eerdere beurten in eenzelfde gesprek tegen een veel
+lager tarief) — zonder dat mee te tellen overschat je de kost fors, want een
+Realtime-sessie stuurt bij elke beurt de VOLLEDIGE audio-geschiedenis tot dan
+toe opnieuw mee als input.
 """
 from __future__ import annotations
 
@@ -28,12 +31,16 @@ CREATE TABLE IF NOT EXISTS usage_log (
     channel TEXT NOT NULL,
     model TEXT NOT NULL,
     input_tokens INTEGER NOT NULL,
+    cached_input_tokens INTEGER NOT NULL DEFAULT 0,
     output_tokens INTEGER NOT NULL,
     cost_usd NUMERIC(10, 6) NOT NULL,
     escalated BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_usage_log_tenant ON usage_log (tenant_id, created_at);
+-- Bestaande productie-rijen (voor deze kolom bestond) hebben cached_input_tokens=0,
+-- dus hun cost_usd blijft een (te hoge) schatting — enkel nieuwe rijen zijn exact.
+ALTER TABLE usage_log ADD COLUMN IF NOT EXISTS cached_input_tokens INTEGER NOT NULL DEFAULT 0;
 
 -- usage_log logt per Realtime-beurt (kan meerdere rijen per gesprek zijn) —
 -- dat volstaat niet om "hoeveel OPROEPEN deze maand" te beantwoorden, wat
@@ -49,10 +56,15 @@ CREATE TABLE IF NOT EXISTS calls (
 CREATE INDEX IF NOT EXISTS idx_calls_tenant ON calls (tenant_id, started_at);
 """
 
-# USD per 1M tokens (input, output) — geblend audio-tarief, zie docstring hierboven.
+# USD per 1M tokens (input vers, output) — geblend audio-tarief, zie docstring hierboven.
 # gpt-realtime (GA): $32 input / $64 output per 1M audio-tokens.
 PRICING_PER_MILLION_TOKENS: dict[str, tuple[float, float]] = {
     OPENAI_REALTIME_MODEL: (32.0, 64.0),
+}
+# USD per 1M CACHED input-tokens — apart, veel lager tarief dan vers.
+# gpt-realtime (GA): $0.40 per 1M gecachete audio-input-tokens.
+CACHED_INPUT_PRICING_PER_MILLION_TOKENS: dict[str, float] = {
+    OPENAI_REALTIME_MODEL: 0.40,
 }
 
 
@@ -61,9 +73,18 @@ async def init_schema(pool: asyncpg.Pool) -> None:
         await conn.execute(SCHEMA_SQL)
 
 
-def calculate_cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
+def calculate_cost_usd(model: str, input_tokens: int, output_tokens: int, cached_input_tokens: int = 0) -> float:
+    """input_tokens is het TOTALE input-aantal (cached + vers) zoals OpenAI
+    het rapporteert — cached_input_tokens zit er dus AL in en wordt hier
+    tegen het lagere cache-tarief herrekend in plaats van het volle tarief."""
     input_price, output_price = PRICING_PER_MILLION_TOKENS.get(model, (0.0, 0.0))
-    return (input_tokens / 1_000_000) * input_price + (output_tokens / 1_000_000) * output_price
+    cached_price = CACHED_INPUT_PRICING_PER_MILLION_TOKENS.get(model, input_price)
+    fresh_input_tokens = max(input_tokens - cached_input_tokens, 0)
+    return (
+        (fresh_input_tokens / 1_000_000) * input_price
+        + (cached_input_tokens / 1_000_000) * cached_price
+        + (output_tokens / 1_000_000) * output_price
+    )
 
 
 async def log_usage(
@@ -75,19 +96,21 @@ async def log_usage(
     input_tokens: int,
     output_tokens: int,
     escalated: bool = False,
+    cached_input_tokens: int = 0,
 ) -> None:
-    cost_usd = calculate_cost_usd(model, input_tokens, output_tokens)
+    cost_usd = calculate_cost_usd(model, input_tokens, output_tokens, cached_input_tokens)
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO usage_log (tenant_id, phone_number, channel, model, input_tokens, output_tokens, cost_usd, escalated)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO usage_log (tenant_id, phone_number, channel, model, input_tokens, cached_input_tokens, output_tokens, cost_usd, escalated)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             """,
             tenant_id,
             phone_number,
             channel,
             model,
             input_tokens,
+            cached_input_tokens,
             output_tokens,
             cost_usd,
             escalated,
