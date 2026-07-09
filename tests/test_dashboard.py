@@ -72,6 +72,24 @@ async def test_tenant_detail_404s_for_unknown_client_id(client, monkeypatch):
     assert response.status_code == 404
 
 
+def test_estimated_invoice_within_included_calls_is_just_the_base_price(monkeypatch):
+    monkeypatch.setattr(dashboard, "PRICING_BASE_EUR", 149.0)
+    monkeypatch.setattr(dashboard, "PRICING_INCLUDED_CALLS", 150)
+    monkeypatch.setattr(dashboard, "PRICING_OVERAGE_EUR", 0.75)
+
+    assert dashboard._estimated_invoice_eur(0) == 149.0
+    assert dashboard._estimated_invoice_eur(150) == 149.0
+
+
+def test_estimated_invoice_adds_overage_beyond_included_calls(monkeypatch):
+    monkeypatch.setattr(dashboard, "PRICING_BASE_EUR", 149.0)
+    monkeypatch.setattr(dashboard, "PRICING_INCLUDED_CALLS", 150)
+    monkeypatch.setattr(dashboard, "PRICING_OVERAGE_EUR", 0.75)
+
+    # regressie-anker voor het kinesist-voorbeeld: 433 gesprekken/maand
+    assert dashboard._estimated_invoice_eur(433) == pytest.approx(149.0 + 283 * 0.75)
+
+
 def test_transcript_view_escapes_message_content(client, monkeypatch):
     """Regressie-vangnet: gespreksinhoud komt van de klant (via STT) en mag
     nooit ongefilterd als HTML gerenderd worden."""

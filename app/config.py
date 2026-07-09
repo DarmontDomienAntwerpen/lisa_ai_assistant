@@ -17,6 +17,10 @@ load_dotenv()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_REALTIME_MODEL = os.environ.get("OPENAI_REALTIME_MODEL", "gpt-realtime")
 OPENAI_REALTIME_VOICE = os.environ.get("OPENAI_REALTIME_VOICE", "alloy")
+# 1.0 = normaal, range 0.25-1.5. LET OP: volgens OpenAI-community-rapporten kan
+# een afwijkende speed het accent/de taalconsistentie beïnvloeden — grondig
+# beluisteren voor dit naar productie gaat, dit werd hard bevochten deze sessie.
+OPENAI_REALTIME_SPEED = float(os.environ.get("OPENAI_REALTIME_SPEED", "1.0"))
 MAX_TOOL_ITERATIONS = 6  # hard cap zodat een gesprek nooit oneindig doorloopt
 
 # --- Database ---
@@ -36,6 +40,14 @@ CONVERSATION_RETENTION_DAYS = int(os.environ.get("CONVERSATION_RETENTION_DAYS", 
 # Darmont Digital zelf om per tenant calls/kosten/escalaties op te volgen) ---
 DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "admin")
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
+
+# --- Prijszetting (basis + overage per gesprek boven het inbegrepen aantal) —
+# gebruikt door het dashboard om per tenant een aanbevolen factuurbedrag te
+# tonen op basis van het effectieve aantal gesprekken. Enkel een hulpmiddel/
+# schatting, geen echte facturatie-integratie. ---
+PRICING_BASE_EUR = float(os.environ.get("PRICING_BASE_EUR", "149"))
+PRICING_INCLUDED_CALLS = int(os.environ.get("PRICING_INCLUDED_CALLS", "150"))
+PRICING_OVERAGE_EUR = float(os.environ.get("PRICING_OVERAGE_EUR", "0.75"))
 
 # --- E-mail (escalatienotificaties naar de zaakeigenaar) — generieke SMTP,
 # werkt met eender welke provider (Gmail, Zoho, een eigen domein, ...) ---

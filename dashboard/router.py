@@ -18,7 +18,14 @@ from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from app import conversation_store, tenants, usage_log
-from app.config import DASHBOARD_PASSWORD, DASHBOARD_USERNAME, get_pool
+from app.config import (
+    DASHBOARD_PASSWORD,
+    DASHBOARD_USERNAME,
+    PRICING_BASE_EUR,
+    PRICING_INCLUDED_CALLS,
+    PRICING_OVERAGE_EUR,
+    get_pool,
+)
 
 router = APIRouter(prefix="/dashboard")
 _security = HTTPBasic()
@@ -37,6 +44,14 @@ def _require_auth(credentials: Annotated[HTTPBasicCredentials, Depends(_security
             detail="Ongeldige login",
             headers={"WWW-Authenticate": "Basic"},
         )
+
+
+def _estimated_invoice_eur(call_count: int) -> float:
+    """Aanbevolen factuurbedrag: basisprijs + overage boven het inbegrepen
+    aantal gesprekken. Schatting/hulpmiddel voor Domien, geen echte
+    facturatie-integratie — zie CLAUDE.md/PRICING_* env vars."""
+    overage_calls = max(0, call_count - PRICING_INCLUDED_CALLS)
+    return PRICING_BASE_EUR + overage_calls * PRICING_OVERAGE_EUR
 
 
 def _page(title: str, body: str) -> str:
@@ -76,20 +91,24 @@ async def overview(_: None = Depends(_require_auth)) -> str:
     for tenant in all_tenants:
         summary = await usage_log.get_tenant_usage_summary(pool, tenant.client_id, since=since)
         last_call = summary["last_call_at"].strftime("%Y-%m-%d %H:%M") if summary["last_call_at"] else "—"
+        invoice = _estimated_invoice_eur(summary["call_count"])
         rows.append(f"""<tr>
             <td><a href="/dashboard/{html.escape(tenant.client_id)}">{html.escape(tenant.business_name)}</a></td>
             <td>{html.escape(tenant.niche)}</td>
             <td>{summary['call_count']}</td>
             <td>${summary['total_cost_usd']:.2f}</td>
+            <td>€{invoice:.2f}</td>
             <td>{summary['escalations']}</td>
             <td class="muted">{last_call}</td>
         </tr>""")
 
     body = f"""<h1>Lisa — dashboard</h1>
-    <p class="muted">Laatste 30 dagen, per tenant.</p>
+    <p class="muted">Laatste 30 dagen, per tenant. "Aanbevolen factuur" is een
+    schatting (basis €{PRICING_BASE_EUR:.0f}, {PRICING_INCLUDED_CALLS} calls inbegrepen,
+    €{PRICING_OVERAGE_EUR:.2f}/call daarboven) — geen echte facturatie-integratie.</p>
     <table>
-      <tr><th>Zaak</th><th>Niche</th><th>Calls</th><th>Kosten</th><th>Escalaties</th><th>Laatste call</th></tr>
-      {''.join(rows) or '<tr><td colspan="6" class="muted">Nog geen tenants.</td></tr>'}
+      <tr><th>Zaak</th><th>Niche</th><th>Calls</th><th>Infra-kost</th><th>Aanbevolen factuur</th><th>Escalaties</th><th>Laatste call</th></tr>
+      {''.join(rows) or '<tr><td colspan="7" class="muted">Nog geen tenants.</td></tr>'}
     </table>"""
     return _page("Lisa — dashboard", body)
 
