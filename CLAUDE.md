@@ -134,16 +134,14 @@ lisa/
 │   └── router.py                 # intern, read-only: /dashboard — per tenant calls/kosten/
 │                                 #   escalaties + transcript-drill-down. HTTP Basic Auth.
 ├── onboarding/                  # stappen om een nieuwe klant/tenant te boarden
-│   ├── onboard_webapp.py         # AANBEVOLEN: één doorlopend lokaal schermpje — jij vult de
-│   │                             #   tenant-gegevens in, drukt "Klaar", geeft dan de laptop
-│   │                             #   aan de klant voor de agenda-koppeling (Google-login),
-│   │                             #   alles in één ononderbroken flow, geen apart commando
-│   ├── onboard_tenant.py         # CLI-alternatief: enkel tenant aanmaken (niet-interactief/
-│   │                             #   gescript te gebruiken; geen agenda-koppeling erbij)
-│   ├── connect_calendar_webapp.py  # CLI-alternatief: enkel agenda koppelen (branded schermpje)
-│   │                             #   aan een tenant die al bestaat, los van onboard_webapp.py
-│   ├── connect_google_calendar.py  # CLI-alternatief: enkel agenda koppelen, kale terminal
-│   └── google_oauth_setup.py     # eenmalige OAuth-setup voor Domiens EIGEN testagenda (dev)
+│   ├── onboard_webapp.py         # DE onboarding-flow: één doorlopend lokaal schermpje — jij
+│   │                             #   vult de tenant-gegevens in, drukt "Klaar", geeft dan de
+│   │                             #   laptop aan de klant voor de agenda-koppeling (Google-
+│   │                             #   login), alles in één ononderbroken flow. Schrijft altijd
+│   │                             #   naar de productie-database (haalt DATABASE_PUBLIC_URL op
+│   │                             #   via de railway CLI, negeert .env)
+│   └── google_oauth_setup.py     # eenmalige OAuth-setup voor Domiens EIGEN testagenda (dev) —
+│                                 #   los van klant-onboarding, voedt enkel de devtools
 ├── devtools/                    # geen productiecode: praten in tekst/via microfoon met exact
 │   ├── dev_chat.py                #   dezelfde RealtimeConversation als een echte oproep
 │   ├── dev_chat_ui.py
@@ -256,9 +254,10 @@ komt uit die tenant-config. Eén codebase, oneindig veel klanten en niches.
    wachtwoord gedeeld, niets te installeren) — `calendar_config` wordt automatisch
    ingevuld, net als `escalation_email` als dat veld leeg gelaten werd. Een "geen
    agenda-koppeling nu"-optie staat er ook op (blijft dan `calendar_type="none"`,
-   Lisa noteert enkel, mens plant handmatig in). Voor een Workspace-agenda kan ook
-   een service-account gebruikt worden (zie `app/integrations/google_calendar.py`)
-   — dat vereist wel het CLI-alternatief `onboard_tenant.py` (keuze 1 in het menu).
+   Lisa noteert enkel, mens plant handmatig in). Voor een Workspace-agenda met een
+   service-account (zie `app/integrations/google_calendar.py`) bestaat nog geen
+   stap in `onboard_webapp.py` — bouw dat pas als een klant het nodig heeft (nu
+   enkel mogelijk via een handmatige database-update).
 4. **Testen**: bel het nieuwe nummer zelf, loop minstens een boeking, annulering en
    escalatie-scenario door voor de klant live gaat (zie CLAUDE.md "Wat 'klaar' betekent").
 5. **Opvolgen**: `/dashboard` toont vanaf de eerste call calls/kosten/escalaties voor

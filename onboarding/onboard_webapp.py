@@ -4,10 +4,10 @@ schakelt hetzelfde scherm automatisch door naar de agenda-koppeling — geef op
 dat moment gewoon de laptop aan de klant, die klikt enkel nog "Connecteer",
 logt in met hun eigen Google-account, en de koppeling is meteen opgeslagen.
 
-Vervangt het na-elkaar draaien van onboard_tenant.py + connect_google_calendar.py
-met twee losse terminalcommando's — dit is dezelfde onderliggende logica,
-enkel als één ononderbroken flow. Voor niet-interactieve/gescripte tenant-
-aanmaak blijft onboard_tenant.py (CLI) bruikbaar.
+Schrijft altijd naar de PRODUCTIE-database op Railway (haalt DATABASE_PUBLIC_URL
+rechtstreeks op via de railway CLI, negeert .env) — nooit naar de lokale
+testdatabase, dus geen risico dat een echte klant-koppeling in het niets
+verdwijnt. Vereist dat `railway` geïnstalleerd en aan dit project gelinkt is.
 
 Gebruik:
   python onboarding/onboard_webapp.py
@@ -16,7 +16,9 @@ Gebruik:
 from __future__ import annotations
 
 import asyncio
+import json
 import re
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -30,13 +32,40 @@ from google_auth_oauthlib.flow import InstalledAppFlow  # noqa: E402
 from googleapiclient.discovery import build  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-from app import tenants  # noqa: E402
+from app import config, tenants  # noqa: E402
 from app.config import close_pool, get_pool  # noqa: E402
 from app.tenants import Tenant  # noqa: E402
+
+
+def _use_production_database() -> None:
+    """Onboarding hoort ALTIJD naar de productie-database te schrijven, nooit
+    naar de lokale testdatabase in .env — anders komt een echte klant-
+    koppeling nergens terecht waar de live Lisa op Railway ze kan vinden.
+    Haalt de productie-DATABASE_PUBLIC_URL rechtstreeks van Railway op (niet
+    uit .env) zodat er geen risico is dat iemand vergeet .env terug te
+    zetten. Faalt hard (geen stille fallback naar lokaal) als dit niet lukt."""
+    try:
+        result = subprocess.run(
+            ["railway", "variables", "--service", "Postgres", "--json"],
+            capture_output=True, text=True, timeout=20, check=True,
+        )
+        production_url = json.loads(result.stdout)["DATABASE_PUBLIC_URL"]
+    except Exception as exc:
+        raise SystemExit(
+            "Kon de productie-database-URL niet ophalen via 'railway variables' "
+            f"(is de railway CLI geïnstalleerd en gelinkt aan dit project?): {exc}"
+        ) from exc
+    config.DATABASE_URL = production_url
+    print("Verbonden met: PRODUCTIE-database (Railway) — niet de lokale testdatabase.")
+
+
+_use_production_database()
 
 SCOPES = [
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/userinfo.email",
+    "openid",  # Google voegt dit automatisch toe zodra userinfo.email gevraagd wordt;
+    # expliciet vermelden voorkomt een scope-mismatch-fout in oauthlib
 ]
 CLIENT_SECRET_PATH = Path(__file__).resolve().parent.parent / "google_oauth_client_secret.json"
 
@@ -90,6 +119,7 @@ _PAGE_STYLE = """
   .status { margin-top: 1rem; font-size: 0.85rem; color: #9ca3af; }
   .error { color: #dc2626; }
   .skip { display: block; margin-top: 1rem; font-size: 0.85rem; color: #6b7280; text-decoration: underline; cursor: pointer; background: none; border: none; }
+  .db-banner { background: #16a34a; color: #fff; font-size: 0.8rem; font-weight: 600; padding: 0.4rem 0.8rem; border-radius: 6px; margin-bottom: 1.2rem; display: inline-block; }
 """
 
 
@@ -99,6 +129,7 @@ async def index() -> str:
 <html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lisa — klant onboarden</title><style>{_PAGE_STYLE}</style></head>
 <body><div class="card" id="app">
+  <div class="db-banner">✓ Verbonden met PRODUCTIE-database (Railway)</div>
   <h1>Nieuwe klant onboarden</h1>
   <p>Vul de gegevens van de zaak in. Zodra je op "Klaar" drukt, verschijnt de
   agenda-koppeling — geef de laptop dan aan de klant.</p>

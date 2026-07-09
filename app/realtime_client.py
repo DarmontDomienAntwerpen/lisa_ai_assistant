@@ -17,7 +17,13 @@ from typing import Any, AsyncIterator, Optional
 import websockets
 
 from app import agent, conversation_store, usage_log
-from app.config import MAX_TOOL_ITERATIONS, OPENAI_API_KEY, OPENAI_REALTIME_MODEL, OPENAI_REALTIME_VOICE
+from app.config import (
+    MAX_TOOL_ITERATIONS,
+    OPENAI_API_KEY,
+    OPENAI_REALTIME_MODEL,
+    OPENAI_REALTIME_SPEED,
+    OPENAI_REALTIME_VOICE,
+)
 from app.customer_lookup import find_or_flag_new
 
 logger = logging.getLogger("lisa")
@@ -97,7 +103,7 @@ class RealtimeConversation:
                     # "auto" is de gebalanceerde middenweg.
                     "turn_detection": {"type": "semantic_vad", "eagerness": "auto", "create_response": True},
                 },
-                "output": {"voice": OPENAI_REALTIME_VOICE, "format": audio_format},
+                "output": {"voice": OPENAI_REALTIME_VOICE, "format": audio_format, "speed": OPENAI_REALTIME_SPEED},
             }
         await self._ws.send(json.dumps({"type": "session.update", "session": session}))
 

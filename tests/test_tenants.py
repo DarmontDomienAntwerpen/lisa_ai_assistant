@@ -1,5 +1,6 @@
 import pytest
 
+from app.config import encrypt_text
 from app.tenants import Tenant, get_tenant_by_client_id, get_tenant_by_number, list_tenants
 
 
@@ -18,7 +19,7 @@ async def test_get_tenant_by_number_maps_record_to_tenant(fake_pool):
         "niche": "kapper",
         "twilio_number": "+3234000001",
         "calendar_type": "none",
-        "calendar_config": "{}",
+        "calendar_config": encrypt_text("{}"),
         "system_prompt_extra": "",
         "escalation_contact": "+3247000001",
         "escalation_email": "eigenaar@test.be",
@@ -51,7 +52,7 @@ async def test_get_tenant_by_client_id_maps_record_to_tenant(fake_pool):
         "niche": "kapper",
         "twilio_number": "+3234000001",
         "calendar_type": "none",
-        "calendar_config": "{}",
+        "calendar_config": encrypt_text("{}"),
         "system_prompt_extra": "",
         "escalation_contact": "+3247000001",
         "escalation_email": "eigenaar@test.be",
@@ -70,7 +71,7 @@ async def test_list_tenants_maps_all_records(fake_pool):
             "niche": "kapper",
             "twilio_number": "+3234000001",
             "calendar_type": "none",
-            "calendar_config": "{}",
+            "calendar_config": encrypt_text("{}"),
             "system_prompt_extra": "",
             "escalation_contact": "+3247000001",
             "escalation_email": "eigenaar@test.be",

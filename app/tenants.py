@@ -12,6 +12,8 @@ from typing import Any, Optional
 
 import asyncpg
 
+from app.config import decrypt_text, encrypt_text
+
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS tenants (
     client_id TEXT PRIMARY KEY,
@@ -25,6 +27,15 @@ CREATE TABLE IF NOT EXISTS tenants (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS escalation_email TEXT NOT NULL DEFAULT '';
+-- calendar_config bevat OAuth-credentials (refresh_token) — te gevoelig om
+-- onversleuteld op te slaan, net als klantnotities elders in dit systeem.
+-- Kolom wordt TEXT (versleutelde JSON is geen geldige JSONB meer). Bestaande
+-- waarden worden hier niet automatisch versleuteld (kan niet in pure SQL) —
+-- worden dus gereset; enige impact vandaag is dat een eventuele test-
+-- agenda-koppeling opnieuw gedaan moet worden.
+ALTER TABLE tenants ALTER COLUMN calendar_config DROP DEFAULT;
+ALTER TABLE tenants ALTER COLUMN calendar_config TYPE TEXT USING '';
+ALTER TABLE tenants ALTER COLUMN calendar_config SET DEFAULT '';
 """
 
 
@@ -47,9 +58,8 @@ class Tenant:
 
     @classmethod
     def from_record(cls, record: Any) -> "Tenant":
-        calendar_config = record["calendar_config"]
-        if isinstance(calendar_config, str):
-            calendar_config = json.loads(calendar_config)
+        raw = record["calendar_config"]
+        calendar_config = json.loads(decrypt_text(raw)) if raw else {}
         return cls(
             client_id=record["client_id"],
             business_name=record["business_name"],
@@ -86,7 +96,7 @@ async def list_tenants(pool: asyncpg.Pool) -> list[Tenant]:
 
 async def get_tenant_by_client_id(pool: asyncpg.Pool, client_id: str) -> Optional[Tenant]:
     """Zoekt de tenant op client_id — bv. voor onboarding-stappen die een
-    reeds aangemaakte tenant verder aanvullen (zie onboarding/connect_google_calendar.py)."""
+    reeds aangemaakte tenant verder aanvullen (zie onboarding/onboard_webapp.py)."""
     async with pool.acquire() as conn:
         record = await conn.fetchrow("SELECT * FROM tenants WHERE client_id = $1", client_id)
     if record is None:
@@ -102,7 +112,7 @@ async def upsert_tenant(pool: asyncpg.Pool, tenant: Tenant) -> None:
                 client_id, business_name, niche, twilio_number,
                 calendar_type, calendar_config, system_prompt_extra, escalation_contact,
                 escalation_email
-            ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (client_id) DO UPDATE SET
                 business_name = EXCLUDED.business_name,
                 niche = EXCLUDED.niche,
@@ -118,7 +128,7 @@ async def upsert_tenant(pool: asyncpg.Pool, tenant: Tenant) -> None:
             tenant.niche,
             tenant.twilio_number,
             tenant.calendar_type,
-            json.dumps(tenant.calendar_config),
+            encrypt_text(json.dumps(tenant.calendar_config)),
             tenant.system_prompt_extra,
             tenant.escalation_contact,
             tenant.escalation_email,
