@@ -1,0 +1,250 @@
+"""Eén doorlopend lokaal schermpje voor de volledige klant-onboarding: eerst
+vul jij de bedrijfsgegevens in (tenant aanmaken), en zodra je op "Klaar" drukt
+schakelt hetzelfde scherm automatisch door naar de agenda-koppeling — geef op
+dat moment gewoon de laptop aan de klant, die klikt enkel nog "Connecteer",
+logt in met hun eigen Google-account, en de koppeling is meteen opgeslagen.
+
+Vervangt het na-elkaar draaien van onboard_tenant.py + connect_google_calendar.py
+met twee losse terminalcommando's — dit is dezelfde onderliggende logica,
+enkel als één ononderbroken flow. Voor niet-interactieve/gescripte tenant-
+aanmaak blijft onboard_tenant.py (CLI) bruikbaar.
+
+Gebruik:
+  python onboarding/onboard_webapp.py
+  open http://localhost:8004
+"""
+from __future__ import annotations
+
+import asyncio
+import re
+import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import uvicorn  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
+from fastapi.responses import HTMLResponse  # noqa: E402
+from google_auth_oauthlib.flow import InstalledAppFlow  # noqa: E402
+from googleapiclient.discovery import build  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
+
+from app import tenants  # noqa: E402
+from app.config import close_pool, get_pool  # noqa: E402
+from app.tenants import Tenant  # noqa: E402
+
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/userinfo.email",
+]
+CLIENT_SECRET_PATH = Path(__file__).resolve().parent.parent / "google_oauth_client_secret.json"
+
+_state: dict = {}
+
+
+def _slugify(business_name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", business_name.lower()).strip("_")
+    return slug or "tenant"
+
+
+class TenantForm(BaseModel):
+    business_name: str
+    niche: str
+    twilio_number: str
+    escalation_contact: str = ""
+    escalation_email: str = ""
+    system_prompt_extra: str = ""
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await close_pool()
+
+
+app = FastAPI(title="Lisa — klant onboarden", lifespan=lifespan)
+
+_PAGE_STYLE = """
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 2rem 1rem; background: #f9fafb; color: #1f2937;
+    font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  .card { max-width: 460px; width: 100%; text-align: center; }
+  h1 { font-size: 1.3rem; margin-bottom: 0.4rem; }
+  p { color: #6b7280; font-size: 0.95rem; line-height: 1.5; }
+  form { text-align: left; margin-top: 1.5rem; }
+  label { display: block; font-size: 0.85rem; font-weight: 600; margin: 0.9rem 0 0.3rem; }
+  input, textarea {
+    width: 100%; padding: 0.6rem 0.7rem; border: 1px solid #d1d5db; border-radius: 8px;
+    font-size: 0.95rem; box-sizing: border-box; font-family: inherit;
+  }
+  textarea { min-height: 70px; resize: vertical; }
+  button {
+    margin-top: 1.5rem; padding: 0.8rem 1.8rem; border-radius: 10px; border: none;
+    font-size: 1rem; cursor: pointer; background: #2563eb; color: #fff; font-weight: 600;
+    width: 100%;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .status { margin-top: 1rem; font-size: 0.85rem; color: #9ca3af; }
+  .error { color: #dc2626; }
+  .skip { display: block; margin-top: 1rem; font-size: 0.85rem; color: #6b7280; text-decoration: underline; cursor: pointer; background: none; border: none; }
+"""
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index() -> str:
+    return f"""<!doctype html>
+<html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lisa — klant onboarden</title><style>{_PAGE_STYLE}</style></head>
+<body><div class="card" id="app">
+  <h1>Nieuwe klant onboarden</h1>
+  <p>Vul de gegevens van de zaak in. Zodra je op "Klaar" drukt, verschijnt de
+  agenda-koppeling — geef de laptop dan aan de klant.</p>
+  <form id="tenantForm">
+    <label>Bedrijfsnaam</label>
+    <input name="business_name" required placeholder="Kapsalon De Vries">
+    <label>Niche</label>
+    <input name="niche" required placeholder="kapper">
+    <label>Twilio-nummer (E.164)</label>
+    <input name="twilio_number" required placeholder="+3234000001">
+    <label>Escalatiecontact — nummer eigenaar</label>
+    <input name="escalation_contact" placeholder="+3247000001">
+    <label>Escalatie-e-mail (leeg mag — wordt zo meteen automatisch ingevuld uit het Google-account bij de agenda-koppeling)</label>
+    <input name="escalation_email" placeholder="">
+    <label>Toon / begroeting / diensten (system_prompt_extra)</label>
+    <textarea name="system_prompt_extra" placeholder="Wees warm en informeel. Diensten: knipbeurt, kleuring, wassen."></textarea>
+    <button type="submit" id="createBtn">Klaar — ga naar agenda-koppeling</button>
+  </form>
+  <div class="status" id="status"></div>
+</div>
+<script>
+document.getElementById('tenantForm').addEventListener('submit', async (e) => {{
+  e.preventDefault();
+  const btn = document.getElementById('createBtn');
+  const status = document.getElementById('status');
+  btn.disabled = true;
+  status.className = 'status';
+  status.textContent = 'Bezig...';
+  const data = Object.fromEntries(new FormData(e.target).entries());
+  try {{
+    const res = await fetch('/create-tenant', {{
+      method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify(data),
+    }});
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.detail || 'onbekende fout');
+    showConnectScreen(result.business_name);
+  }} catch (err) {{
+    status.textContent = 'Fout: ' + err.message;
+    status.className = 'status error';
+    btn.disabled = false;
+  }}
+}});
+
+function showConnectScreen(businessName) {{
+  document.getElementById('app').innerHTML = `
+    <h1>Google Agenda koppelen</h1>
+    <p>Voor <b>${{businessName}}</b> — geef de laptop nu aan de klant. Ze loggen in met het
+    Google-account waarvan de agenda door Lisa gebruikt moet worden. Er wordt niets
+    geïnstalleerd en er wordt geen wachtwoord gedeeld.</p>
+    <button id="connectBtn" onclick="startConnect()">Connecteer</button>
+    <button class="skip" onclick="skipConnect()">Geen agenda-koppeling nu — later instellen</button>
+    <div class="status" id="status2"></div>
+  `;
+}}
+
+async function startConnect() {{
+  const btn = document.getElementById('connectBtn');
+  const status = document.getElementById('status2');
+  btn.disabled = true;
+  status.textContent = 'Bezig — een nieuw tabblad opent voor het Google-inlogscherm...';
+  try {{
+    const res = await fetch('/connect-calendar', {{ method: 'POST' }});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'onbekende fout');
+    document.getElementById('app').innerHTML = `<h1>Klaar!</h1><p>${{data.business_name}} is volledig onboard: tenant aangemaakt, agenda gekoppeld (calendar_id: ${{data.calendar_id}}).</p><p>Test nu zelf met een boeking of annulering voor de klant live gaat.</p>`;
+  }} catch (err) {{
+    status.textContent = 'Fout: ' + err.message;
+    status.className = 'status error';
+    btn.disabled = false;
+  }}
+}}
+
+function skipConnect() {{
+  document.getElementById('app').innerHTML = '<h1>Klaar!</h1><p>Tenant aangemaakt zonder agenda-koppeling. Lisa noteert aanvragen enkel, een medewerker plant handmatig in tot je later alsnog koppelt.</p>';
+}}
+</script>
+</body></html>"""
+
+
+@app.post("/create-tenant")
+async def create_tenant(form: TenantForm) -> dict:
+    pool = await get_pool()
+    await tenants.init_schema(pool)
+
+    tenant = Tenant(
+        client_id=_slugify(form.business_name),
+        business_name=form.business_name,
+        niche=form.niche,
+        twilio_number=form.twilio_number,
+        calendar_type="none",
+        calendar_config={},
+        system_prompt_extra=form.system_prompt_extra,
+        escalation_contact=form.escalation_contact,
+        escalation_email=form.escalation_email,
+    )
+    await tenants.upsert_tenant(pool, tenant)
+    _state["tenant"] = tenant
+    _state["pool"] = pool
+
+    return {"business_name": tenant.business_name}
+
+
+@app.post("/connect-calendar")
+async def connect_calendar() -> dict:
+    tenant = _state.get("tenant")
+    pool = _state.get("pool")
+    if tenant is None or pool is None:
+        raise HTTPException(status_code=400, detail="Nog geen tenant aangemaakt — vul eerst het formulier in.")
+    if not CLIENT_SECRET_PATH.exists():
+        raise HTTPException(status_code=500, detail="Ontbreekt: google_oauth_client_secret.json")
+
+    def _run_oauth():
+        flow = InstalledAppFlow.from_client_secrets_file(str(CLIENT_SECRET_PATH), SCOPES)
+        return flow.run_local_server(port=0)
+
+    credentials = await asyncio.to_thread(_run_oauth)
+
+    calendar_id = "primary"
+    tenant.calendar_type = "google_calendar"
+    tenant.calendar_config = {
+        "oauth_credentials": {
+            "token": credentials.token,
+            "refresh_token": credentials.refresh_token,
+            "token_uri": credentials.token_uri,
+            "client_id": credentials.client_id,
+            "client_secret": credentials.client_secret,
+            "scopes": credentials.scopes,
+        },
+        "calendar_id": calendar_id,
+    }
+
+    if not tenant.escalation_email:
+        try:
+            userinfo = await asyncio.to_thread(
+                lambda: build("oauth2", "v2", credentials=credentials).userinfo().get().execute()
+            )
+            google_email = userinfo.get("email", "")
+        except Exception:  # noqa: BLE001 — nooit de hele koppeling laten falen op deze extra stap
+            google_email = ""
+        if google_email:
+            tenant.escalation_email = google_email
+
+    await tenants.upsert_tenant(pool, tenant)
+
+    return {"business_name": tenant.business_name, "calendar_id": calendar_id}
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8004)

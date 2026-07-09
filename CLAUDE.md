@@ -134,10 +134,15 @@ lisa/
 │   └── router.py                 # intern, read-only: /dashboard — per tenant calls/kosten/
 │                                 #   escalaties + transcript-drill-down. HTTP Basic Auth.
 ├── onboarding/                  # stappen om een nieuwe klant/tenant te boarden
-│   ├── onboard_tenant.py         # interactief: nieuwe klant toevoegen (zie "Klant onboarden")
-│   ├── connect_google_calendar.py  # klant koppelt zelf zijn Google Agenda (OAuth) aan een
-│   │                             #   al aangemaakte tenant — vult tenants.calendar_config aan,
-│   │                             #   geen aparte tabel/module
+│   ├── onboard_webapp.py         # AANBEVOLEN: één doorlopend lokaal schermpje — jij vult de
+│   │                             #   tenant-gegevens in, drukt "Klaar", geeft dan de laptop
+│   │                             #   aan de klant voor de agenda-koppeling (Google-login),
+│   │                             #   alles in één ononderbroken flow, geen apart commando
+│   ├── onboard_tenant.py         # CLI-alternatief: enkel tenant aanmaken (niet-interactief/
+│   │                             #   gescript te gebruiken; geen agenda-koppeling erbij)
+│   ├── connect_calendar_webapp.py  # CLI-alternatief: enkel agenda koppelen (branded schermpje)
+│   │                             #   aan een tenant die al bestaat, los van onboard_webapp.py
+│   ├── connect_google_calendar.py  # CLI-alternatief: enkel agenda koppelen, kale terminal
 │   └── google_oauth_setup.py     # eenmalige OAuth-setup voor Domiens EIGEN testagenda (dev)
 ├── devtools/                    # geen productiecode: praten in tekst/via microfoon met exact
 │   ├── dev_chat.py                #   dezelfde RealtimeConversation als een echte oproep
@@ -242,20 +247,18 @@ komt uit die tenant-config. Eén codebase, oneindig veel klanten en niches.
     op de URL van deze TwiML Bin (methode POST). Twilio host dit zelf, dus dit blijft
     werken zelfs als Railway volledig onbereikbaar is — precies het scenario waarvoor
     dit dient.
-2. **Tenant aanmaken**: `python onboarding/onboard_tenant.py` — interactief script dat
-   `tenants.upsert_tenant()` aanroept met business_name, niche, twilio_number,
-   system_prompt_extra (toon/begroeting/diensten van deze zaak — hier typ je de
-   info die Lisa aan klanten mag geven: uren, prijzen, adres, beleid) en
-   escalation_contact. Kies `calendar_type="none"` als tussenstap als de
-   agenda-koppeling in een aparte stap gebeurt (zie hieronder).
-3. **Agenda-koppeling** (vandaag enkel Google Calendar): tijdens de installatie bij
-   de klant, `python onboarding/connect_google_calendar.py <client_id>` — opent Google's
-   eigen inlogscherm, de klant logt zelf in met zijn/haar Google-account en geeft
-   toestemming (geen wachtwoord gedeeld, niets te installeren), en het script vult
-   `calendar_config` van de al aangemaakte tenant automatisch aan. Voor een
-   Workspace-agenda kan ook een service-account gebruikt worden (zie
-   `integrations/google_calendar.py`). Zonder agenda-koppeling blijft
-   `calendar_type="none"` staan (Lisa noteert enkel, mens plant handmatig in).
+2+3. **Tenant aanmaken + agenda-koppeling, in één flow**: `python
+   onboarding/onboard_webapp.py`, open `http://localhost:8004` — vul zelf de
+   bedrijfsgegevens in (business_name, niche, twilio_number, system_prompt_extra
+   met de info die Lisa aan klanten mag geven: uren, prijzen, adres, beleid,
+   escalation_contact), druk op "Klaar", en geef dan de laptop aan de klant: die
+   klikt enkel nog "Connecteer", logt in met hun eigen Google-account (geen
+   wachtwoord gedeeld, niets te installeren) — `calendar_config` wordt automatisch
+   ingevuld, net als `escalation_email` als dat veld leeg gelaten werd. Een "geen
+   agenda-koppeling nu"-optie staat er ook op (blijft dan `calendar_type="none"`,
+   Lisa noteert enkel, mens plant handmatig in). Voor een Workspace-agenda kan ook
+   een service-account gebruikt worden (zie `app/integrations/google_calendar.py`)
+   — dat vereist wel het CLI-alternatief `onboard_tenant.py` (keuze 1 in het menu).
 4. **Testen**: bel het nieuwe nummer zelf, loop minstens een boeking, annulering en
    escalatie-scenario door voor de klant live gaat (zie CLAUDE.md "Wat 'klaar' betekent").
 5. **Opvolgen**: `/dashboard` toont vanaf de eerste call calls/kosten/escalaties voor
