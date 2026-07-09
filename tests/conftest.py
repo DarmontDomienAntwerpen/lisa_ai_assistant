@@ -30,6 +30,7 @@ def tenant() -> Tenant:
         calendar_config={},
         system_prompt_extra="Wees warm en informeel.",
         escalation_contact="+3247000001",
+        escalation_email="eigenaar@kapsalondevries.test",
     )
 
 

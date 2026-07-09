@@ -14,11 +14,22 @@ from typing import Optional
 
 from fastapi import WebSocket
 
-from app import tenants
+from app import customer_lookup, tenants
 from app.config import get_pool
+from app.escalation_email import send_escalation_email
 from app.realtime_client import RealtimeConversation
 
 logger = logging.getLogger("lisa")
+
+
+async def _notify_escalation(tenant: tenants.Tenant, pool, caller_number: str, customer_name: str, reason: str) -> None:
+    if not customer_name:
+        # Lisa vraagt intussen zelf om de naam voor ze escaleert als die nog
+        # niet gekend was, maar val terug op een lookup voor bestaande
+        # klanten waarvan de naam al in het systeem stond.
+        customer, _ = await customer_lookup.find_or_flag_new(tenant, pool, caller_number)
+        customer_name = (customer or {}).get("name", "")
+    await send_escalation_email(tenant, caller_number, customer_name, reason)
 
 
 async def run_media_stream(websocket: WebSocket) -> None:
@@ -28,6 +39,8 @@ async def run_media_stream(websocket: WebSocket) -> None:
     conversation: Optional[RealtimeConversation] = None
     relay_task: Optional[asyncio.Task] = None
     stream_sid = ""
+    tenant: Optional[tenants.Tenant] = None
+    caller_number = ""
 
     async def relay_to_twilio() -> None:
         assert conversation is not None
@@ -44,6 +57,15 @@ async def run_media_stream(websocket: WebSocket) -> None:
                 # buffer, anders speelt de staart van het oude antwoord nog
                 # door bovenop het nieuwe.
                 await websocket.send_text(json.dumps({"event": "clear", "streamSid": stream_sid}))
+            elif event["type"] == "escalated":
+                # Geen live call-transfer (vaak maar één zakennummer, dat al
+                # naar Twilio doorschakelt — terugbellen zou in een lus
+                # terechtkomen). In plaats daarvan: mail naar de eigenaar,
+                # het gesprek met Lisa loopt gewoon door.
+                assert tenant is not None
+                asyncio.create_task(
+                    _notify_escalation(tenant, pool, caller_number, event.get("customer_name", ""), event.get("reason", ""))
+                )
 
     try:
         async for raw in websocket.iter_text():

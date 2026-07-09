@@ -14,6 +14,10 @@ Gebruik:
 Vereist google_oauth_client_secret.json in de projectroot (OAuth Desktop-app
 credentials uit Google Cloud Console) — dezelfde die google_oauth_setup.py
 gebruikt voor lokaal dev-testen.
+
+Vult ook automatisch escalation_email in (uit hetzelfde Google-account, via
+de userinfo.email-scope) als dat tijdens onboard_tenant.py leeg gelaten
+werd — geen aparte vraag nodig, de klant logt hier toch al in.
 """
 from __future__ import annotations
 
@@ -25,11 +29,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import asyncio  # noqa: E402
 
 from google_auth_oauthlib.flow import InstalledAppFlow  # noqa: E402
+from googleapiclient.discovery import build  # noqa: E402
 
 from app import tenants  # noqa: E402
 from app.config import close_pool, get_pool  # noqa: E402
 
-SCOPES = ["https://www.googleapis.com/auth/calendar"]
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/userinfo.email",
+]
 CLIENT_SECRET_PATH = Path(__file__).resolve().parent.parent / "google_oauth_client_secret.json"
 
 
@@ -67,6 +75,18 @@ async def main() -> None:
         },
         "calendar_id": calendar_id,
     }
+
+    if not tenant.escalation_email:
+        try:
+            userinfo = build("oauth2", "v2", credentials=credentials).userinfo().get().execute()
+            google_email = userinfo.get("email", "")
+        except Exception as exc:  # noqa: BLE001 — nooit de hele koppeling laten falen op deze extra stap
+            print(f"(kon e-mailadres niet ophalen uit Google-account: {exc} — escalation_email blijft leeg)")
+            google_email = ""
+        if google_email:
+            tenant.escalation_email = google_email
+            print(f"escalation_email automatisch ingevuld: {google_email}")
+
     await tenants.upsert_tenant(pool, tenant)
     await close_pool()
 

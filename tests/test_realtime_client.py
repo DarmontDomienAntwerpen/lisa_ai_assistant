@@ -52,7 +52,7 @@ async def test_handle_function_call_escalates_and_sends_output(tenant, fake_pool
         {"call_id": "c1", "name": "escalate_to_human", "arguments": json.dumps({"reason": "klacht"})}
     )
 
-    assert event == {"type": "escalated", "reason": "klacht"}
+    assert event == {"type": "escalated", "reason": "klacht", "customer_name": ""}
     assert conv.escalated is True
     # Geen response.create hier — dat gebeurt centraal op response.done (zie
     # test_events_sends_exactly_one_response_create_for_multiple_tool_calls),
@@ -61,6 +61,25 @@ async def test_handle_function_call_escalates_and_sends_output(tenant, fake_pool
     assert sent_types == ["conversation.item.create"]
     assert conv._ws.sent[0]["item"]["call_id"] == "c1"
     assert conv._had_function_call_this_response is True
+
+
+@pytest.mark.asyncio
+async def test_handle_function_call_escalates_with_customer_name(tenant, fake_pool, monkeypatch):
+    """Regressie-test: als Lisa de naam al gespeld en meegegeven heeft (bv.
+    een nieuwe klant die meteen escaleert zonder ooit een afspraak te
+    boeken), moet die naam doorstromen naar het escalated-event — anders
+    weet de medewerker in de escalatiemail niet wie terug te bellen."""
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: _fake_adapter())
+    conv = RealtimeConversation(tenant, fake_pool, "+32470000001", "voice", audio=True)
+    conv._ws = FakeWS()
+
+    event = await conv._handle_function_call({
+        "call_id": "c1",
+        "name": "escalate_to_human",
+        "arguments": json.dumps({"reason": "klacht", "customer_name": "Peeters"}),
+    })
+
+    assert event == {"type": "escalated", "reason": "klacht", "customer_name": "Peeters"}
 
 
 @pytest.mark.asyncio

@@ -252,7 +252,11 @@ class RealtimeConversation:
             self.escalated = True
             if not was_escalated:
                 logger.info("Gesprek geëscaleerd voor tenant %s / %s", self.tenant.client_id, self.phone_number)
-                tool_event = {"type": "escalated", "reason": tool_input.get("reason", "")}
+                tool_event = {
+                    "type": "escalated",
+                    "reason": tool_input.get("reason", ""),
+                    "customer_name": tool_input.get("customer_name", "") if name == "escalate_to_human" else "",
+                }
         elif name in ("cancel_appointment", "reschedule_appointment") and result.get("status") in ("cancelled", "rescheduled"):
             tool_event = {"type": "booking_event", "status": result["status"], "customer_name": result.get("customer_name", "")}
 

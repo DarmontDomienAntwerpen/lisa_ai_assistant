@@ -37,6 +37,14 @@ CONVERSATION_RETENTION_DAYS = int(os.environ.get("CONVERSATION_RETENTION_DAYS", 
 DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "admin")
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
 
+# --- E-mail (escalatienotificaties naar de zaakeigenaar) — generieke SMTP,
+# werkt met eender welke provider (Gmail, Zoho, een eigen domein, ...) ---
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_FROM_ADDRESS = os.environ.get("SMTP_FROM_ADDRESS", "")
+
 _pool: Optional[asyncpg.Pool] = None
 
 

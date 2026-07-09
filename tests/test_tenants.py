@@ -21,6 +21,7 @@ async def test_get_tenant_by_number_maps_record_to_tenant(fake_pool):
         "calendar_config": "{}",
         "system_prompt_extra": "",
         "escalation_contact": "+3247000001",
+        "escalation_email": "eigenaar@test.be",
     }
     result = await get_tenant_by_number(fake_pool, "+3234000001")
     assert isinstance(result, Tenant)
@@ -53,6 +54,7 @@ async def test_get_tenant_by_client_id_maps_record_to_tenant(fake_pool):
         "calendar_config": "{}",
         "system_prompt_extra": "",
         "escalation_contact": "+3247000001",
+        "escalation_email": "eigenaar@test.be",
     }
     result = await get_tenant_by_client_id(fake_pool, "kapper_devries")
     assert isinstance(result, Tenant)
@@ -71,6 +73,7 @@ async def test_list_tenants_maps_all_records(fake_pool):
             "calendar_config": "{}",
             "system_prompt_extra": "",
             "escalation_contact": "+3247000001",
+            "escalation_email": "eigenaar@test.be",
         }
     ]
     result = await list_tenants(fake_pool)

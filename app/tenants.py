@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS tenants (
     escalation_contact TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS escalation_email TEXT NOT NULL DEFAULT '';
 """
 
 
@@ -37,6 +38,12 @@ class Tenant:
     calendar_config: dict[str, Any] = field(default_factory=dict)
     system_prompt_extra: str = ""
     escalation_contact: str = ""
+    # E-mailadres van de zaakeigenaar — bij escalatie stuurt Lisa hier een mail
+    # naartoe (bellernummer + reden). Geen live call-transfer: er is vaak maar
+    # één zakennummer (dat al naar Twilio doorschakelt), dus terugbellen zou
+    # in een lus terechtkomen. Mail werkt met eender welk toestel van de
+    # eigenaar en vereist geen tweede telefoonlijn.
+    escalation_email: str = ""
 
     @classmethod
     def from_record(cls, record: Any) -> "Tenant":
@@ -52,6 +59,7 @@ class Tenant:
             calendar_config=calendar_config or {},
             system_prompt_extra=record["system_prompt_extra"] or "",
             escalation_contact=record["escalation_contact"],
+            escalation_email=record["escalation_email"] or "",
         )
 
 
@@ -92,8 +100,9 @@ async def upsert_tenant(pool: asyncpg.Pool, tenant: Tenant) -> None:
             """
             INSERT INTO tenants (
                 client_id, business_name, niche, twilio_number,
-                calendar_type, calendar_config, system_prompt_extra, escalation_contact
-            ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+                calendar_type, calendar_config, system_prompt_extra, escalation_contact,
+                escalation_email
+            ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
             ON CONFLICT (client_id) DO UPDATE SET
                 business_name = EXCLUDED.business_name,
                 niche = EXCLUDED.niche,
@@ -101,7 +110,8 @@ async def upsert_tenant(pool: asyncpg.Pool, tenant: Tenant) -> None:
                 calendar_type = EXCLUDED.calendar_type,
                 calendar_config = EXCLUDED.calendar_config,
                 system_prompt_extra = EXCLUDED.system_prompt_extra,
-                escalation_contact = EXCLUDED.escalation_contact
+                escalation_contact = EXCLUDED.escalation_contact,
+                escalation_email = EXCLUDED.escalation_email
             """,
             tenant.client_id,
             tenant.business_name,
@@ -111,4 +121,5 @@ async def upsert_tenant(pool: asyncpg.Pool, tenant: Tenant) -> None:
             json.dumps(tenant.calendar_config),
             tenant.system_prompt_extra,
             tenant.escalation_contact,
+            tenant.escalation_email,
         )

@@ -56,10 +56,15 @@ zie "Later" hieronder — maar niet zolang voice het enige kanaal is.
 - **Claude/Anthropic als brain** — enkel relevant zodra er een tweede kanaal bijkomt
   (bv. tekst) of complexere escalatie-redenering nodig is. Niet toevoegen zolang voice
   het enige kanaal is en OpenAI Realtime het gesprek zelf goed genoeg voert.
-- **Live call-transfer naar escalation_contact.** Vandaag hoort de klant enkel dat een
-  medewerker overneemt (uitgesproken door Lisa) en wordt de escalatie gelogd
-  (`usage_log`). Een echte warme overdracht van het live gesprek naar de mens (via
-  Twilio's call-redirect) is een waardevolle volgende stap, geen dag-1 vereiste.
+- **Live call-transfer naar escalation_contact.** Bewust NIET gebouwd: een zaak heeft
+  vaak maar één telefoonlijn (het zaaknummer, dat al naar Twilio doorschakelt) —
+  live terugbellen daarnaartoe komt in een lus terecht, er is geen tweede lijn om
+  een medewerker op te krijgen. In plaats daarvan stuurt Lisa bij een escalatie een
+  e-mail naar `tenant.escalation_email` (zie `app/escalation_email.py`, getriggerd
+  vanuit `app/voice_stream.py`) met klantnaam, nummer, tijdstip en reden — de
+  eigenaar belt zelf terug wanneer het uitkomt. `escalation_contact` (telefoonnummer)
+  blijft in het datamodel staan voor een eventuele latere, aparte-lijn-oplossing,
+  maar wordt vandaag nergens actief gebruikt.
 - **Outlook / eigen REST-klantsysteem-adapters** — de interface (`app/integrations/base.py`)
   ondersteunt dit al, maar er is nu geen tenant die het gebruikt. Bouw pas als een
   klant het nodig heeft.
@@ -162,7 +167,8 @@ uitsluitend in tenant-config en in de integration-adapter — nooit hardcoded in
   "calendar_type": "google_calendar",      # of "none" — andere adapters komen pas als een klant ze nodig heeft
   "calendar_config": {...},                # credentials/endpoint, per type verschillend
   "system_prompt_extra": "...",            # niche/bedrijf-specifieke toon en context
-  "escalation_contact": "+3247..."
+  "escalation_contact": "+3247...",        # nummer van de eigenaar, nog niet actief gebruikt (zie "Later")
+  "escalation_email": "eigenaar@zaak.be"   # waar Lisa naartoe mailt bij een escalatie
 }
 ```
 

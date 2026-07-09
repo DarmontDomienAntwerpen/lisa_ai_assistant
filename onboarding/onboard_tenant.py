@@ -67,7 +67,12 @@ async def main() -> None:
     client_id = _prompt("client_id (unieke sleutel, geen spaties)", default_client_id)
     niche = _prompt("Niche (bv. 'kapper', 'tandarts', 'garage')")
     twilio_number = _prompt("Twilio-nummer (E.164, bv. +3234000001)")
-    escalation_contact = _prompt("Escalatiecontact — nummer van de zaakeigenaar zelf (E.164)")
+    escalation_contact = _prompt("Escalatiecontact — nummer van de zaakeigenaar zelf (E.164, nog niet actief gebruikt)")
+    escalation_email = _prompt(
+        "Escalatie-e-mail — waar Lisa naartoe mailt bij een escalatie (leeg laten mag: "
+        "wordt automatisch ingevuld met het Google-account van de klant bij "
+        "connect_google_calendar.py, als er een agenda-koppeling volgt)"
+    )
 
     calendar_type, calendar_config = _build_calendar_config()
 
@@ -84,6 +89,7 @@ async def main() -> None:
         calendar_config=calendar_config,
         system_prompt_extra=system_prompt_extra,
         escalation_contact=escalation_contact,
+        escalation_email=escalation_email,
     )
 
     print(f"\n--- Controleer ---\n{tenant}\n")
