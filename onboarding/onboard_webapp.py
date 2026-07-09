@@ -194,11 +194,39 @@ async function startConnect() {{
     const res = await fetch('/connect-calendar', {{ method: 'POST' }});
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'onbekende fout');
-    document.getElementById('app').innerHTML = `<h1>Klaar!</h1><p>${{data.business_name}} is volledig onboard: tenant aangemaakt, agenda gekoppeld (calendar_id: ${{data.calendar_id}}).</p><p>Test nu zelf met een boeking of annulering voor de klant live gaat.</p>`;
+    showCalendarPicker(data.calendars);
   }} catch (err) {{
     status.textContent = 'Fout: ' + err.message;
     status.className = 'status error';
     btn.disabled = false;
+  }}
+}}
+
+function showCalendarPicker(calendars) {{
+  const options = calendars.map(c => `<option value="${{c.id}}">${{c.summary}}${{c.primary ? ' (hoofdagenda)' : ''}}</option>`).join('');
+  document.getElementById('app').innerHTML = `
+    <h1>Welke agenda?</h1>
+    <p>Dit Google-account heeft meerdere agenda's — welke moet Lisa gebruiken voor afspraken?</p>
+    <select id="calendarSelect" style="width:100%; padding:0.6rem; border-radius:8px; border:1px solid #d1d5db; font-size:0.95rem;">${{options}}</select>
+    <button onclick="finishConnect()">Bevestigen</button>
+    <div class="status" id="status3"></div>
+  `;
+}}
+
+async function finishConnect() {{
+  const calendarId = document.getElementById('calendarSelect').value;
+  const status = document.getElementById('status3');
+  status.textContent = 'Bezig...';
+  try {{
+    const res = await fetch('/select-calendar', {{
+      method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{calendar_id: calendarId}}),
+    }});
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'onbekende fout');
+    document.getElementById('app').innerHTML = `<h1>Klaar!</h1><p>${{data.business_name}} is volledig onboard: tenant aangemaakt, agenda gekoppeld (${{data.calendar_id}}).</p><p>Test nu zelf met een boeking of annulering voor de klant live gaat.</p>`;
+  }} catch (err) {{
+    status.textContent = 'Fout: ' + err.message;
+    status.className = 'status error';
   }}
 }}
 
@@ -232,8 +260,16 @@ async def create_tenant(form: TenantForm) -> dict:
     return {"business_name": tenant.business_name}
 
 
+class CalendarChoice(BaseModel):
+    calendar_id: str
+
+
 @app.post("/connect-calendar")
 async def connect_calendar() -> dict:
+    """Stap 1: OAuth-login, dan de beschikbare agenda's van dit account
+    oplijsten — NOOIT blind 'primary' aannemen, een account kan meerdere
+    agenda's hebben (bv. een aparte "Kapsalon Afspraken"-agenda naast de
+    persoonlijke hoofdagenda) en de klant moet zelf kunnen kiezen welke."""
     tenant = _state.get("tenant")
     pool = _state.get("pool")
     if tenant is None or pool is None:
@@ -246,20 +282,17 @@ async def connect_calendar() -> dict:
         return flow.run_local_server(port=0)
 
     credentials = await asyncio.to_thread(_run_oauth)
+    _state["credentials"] = credentials
 
-    calendar_id = "primary"
-    tenant.calendar_type = "google_calendar"
-    tenant.calendar_config = {
-        "oauth_credentials": {
-            "token": credentials.token,
-            "refresh_token": credentials.refresh_token,
-            "token_uri": credentials.token_uri,
-            "client_id": credentials.client_id,
-            "client_secret": credentials.client_secret,
-            "scopes": credentials.scopes,
-        },
-        "calendar_id": calendar_id,
-    }
+    calendar_list = await asyncio.to_thread(
+        lambda: build("calendar", "v3", credentials=credentials).calendarList().list().execute()
+    )
+    calendars = [
+        {"id": c["id"], "summary": c.get("summary", c["id"]), "primary": c.get("primary", False)}
+        for c in calendar_list.get("items", [])
+    ]
+    if not calendars:
+        raise HTTPException(status_code=500, detail="Geen agenda's gevonden op dit Google-account.")
 
     if not tenant.escalation_email:
         try:
@@ -272,9 +305,33 @@ async def connect_calendar() -> dict:
         if google_email:
             tenant.escalation_email = google_email
 
+    return {"calendars": calendars}
+
+
+@app.post("/select-calendar")
+async def select_calendar(choice: CalendarChoice) -> dict:
+    """Stap 2: de klant koos welke agenda — nu pas definitief opslaan."""
+    tenant = _state.get("tenant")
+    pool = _state.get("pool")
+    credentials = _state.get("credentials")
+    if tenant is None or pool is None or credentials is None:
+        raise HTTPException(status_code=400, detail="Geen lopende agenda-koppeling — begin opnieuw met 'Connecteer'.")
+
+    tenant.calendar_type = "google_calendar"
+    tenant.calendar_config = {
+        "oauth_credentials": {
+            "token": credentials.token,
+            "refresh_token": credentials.refresh_token,
+            "token_uri": credentials.token_uri,
+            "client_id": credentials.client_id,
+            "client_secret": credentials.client_secret,
+            "scopes": credentials.scopes,
+        },
+        "calendar_id": choice.calendar_id,
+    }
     await tenants.upsert_tenant(pool, tenant)
 
-    return {"business_name": tenant.business_name, "calendar_id": calendar_id}
+    return {"business_name": tenant.business_name, "calendar_id": choice.calendar_id}
 
 
 if __name__ == "__main__":
