@@ -104,7 +104,10 @@ async def main() -> None:
 
     print(f"\nKlaar. Zet in Twilio de 'A call comes in'-webhook van {twilio_number} op:")
     print("  POST https://<railway-domein>/voice")
-    print("Bel daarna zelf het nummer om te testen voor de klant live gaat.")
+    print("\nVergeet niet de Voice Fallback URL in te stellen (TwiML Bin, NIET een")
+    print("Railway-URL) zodat een oproep bij een crash van onze service alsnog naar")
+    print(f"{escalation_contact or '(escalation_contact — nog niet ingevuld!)'} gaat i.p.v. stil te vallen — zie CLAUDE.md \"Klant onboarden\" stap 1b.")
+    print("\nBel daarna zelf het nummer om te testen voor de klant live gaat.")
 
 
 if __name__ == "__main__":

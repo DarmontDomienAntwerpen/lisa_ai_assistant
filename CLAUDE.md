@@ -206,7 +206,11 @@ komt uit die tenant-config. Eén codebase, oneindig veel klanten en niches.
    partijen zonder noodzaak.
 4. **Geen stille faalstand.** Als OpenAI Realtime API, Twilio, of een agenda-adapter
    faalt: klant krijgt altijd een duidelijk (gesproken) bericht, nooit stilte of een
-   opgehangen lijn zonder uitleg.
+   opgehangen lijn zonder uitleg. Dit geldt OOK als Railway/de hele `web`-service zelf
+   plat ligt — daarom heeft élke tenant een Twilio **Voice Fallback URL** ingesteld op
+   een Twilio-gehoste TwiML Bin (nooit een eigen Railway-URL, want die kan net zo goed
+   down zijn): als het primaire `/voice`-webhook faalt/timeout't, belt Twilio zelf naar
+   `escalation_contact` door — zie "Klant onboarden" stap 1b.
 5. **Logging vanaf dag 1** — tokens, kosten, kanaal, escalaties, calls, per tenant.
    Zichtbaar via `/dashboard` (intern, HTTP Basic Auth — zie Techstack).
 
@@ -224,6 +228,20 @@ komt uit die tenant-config. Eén codebase, oneindig veel klanten en niches.
    - **Nummerportering (trager, definitief):** het bestaande nummer verhuist
      volledig naar Twilio — dan is er geen apart nummer meer nodig. Duurt dagen
      tot weken via de huidige operator.
+1b. **Fallback bij uitval** (niet overslaan — anders valt een oproep stil bij een
+    crash van onze eigen service): maak in de Twilio Console een **TwiML Bin** aan
+    (Explore Products → TwiML Bins) met:
+    ```xml
+    <Response>
+        <Say language="nl-NL">Onze telefonische assistent is momenteel tijdelijk niet
+        bereikbaar. We verbinden je door.</Say>
+        <Dial>+32... (escalation_contact van deze tenant, NOOIT het zaaknummer zelf)</Dial>
+    </Response>
+    ```
+    Zet daarna bij het Twilio-nummer, onder "A call comes in", de **Voice Fallback URL**
+    op de URL van deze TwiML Bin (methode POST). Twilio host dit zelf, dus dit blijft
+    werken zelfs als Railway volledig onbereikbaar is — precies het scenario waarvoor
+    dit dient.
 2. **Tenant aanmaken**: `python onboarding/onboard_tenant.py` — interactief script dat
    `tenants.upsert_tenant()` aanroept met business_name, niche, twilio_number,
    system_prompt_extra (toon/begroeting/diensten van deze zaak — hier typ je de
