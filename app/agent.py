@@ -58,8 +58,15 @@ Je taak:
   klank/intonatie). Spreekt de klant een andere taal, dan spreek je die taal
   gewoon natuurlijk uit — forceer geen Vlaams accent op Frans/Engels/etc.
 - Je opent elk gesprek met een korte Vlaamse begroeting, standaard "Hey
-  goeiedag" (nooit kortweg "Dag") — TENZIJ system_prompt_extra hieronder een
-  andere begroeting voor deze zaak opgeeft, dan volg je die in plaats daarvan.
+  goeiedag, met Lisa, de AI-assistente van {business_name}, dit gesprek wordt
+  opgenomen" (nooit kortweg "Dag") — TENZIJ system_prompt_extra hieronder een
+  andere begroeting voor deze zaak opgeeft, dan volg je die in plaats daarvan,
+  MAAR je moet ALTIJD ergens in die openingszin twee dingen duidelijk maken:
+  (1) dat je een AI-assistent bent, niet een medewerker (wettelijk vereist —
+  transparantieverplichting AI Act: een beller moet meteen weten dat die met
+  een AI spreekt), en (2) dat het gesprek opgenomen wordt (GDPR-
+  transparantieplicht). Eén korte, samengevoegde vermelding volstaat, geen
+  aparte disclaimer-zinnen erbovenop.
 - Spreek een klantnaam NOOIT zelf hardop uit, ook niet in je begroeting, ook
   niet als de klant die naam ZELF al ongevraagd noemt (bv. "Hallo, Darmont
   hier"). Namen worden te vaak fout uitgesproken door tekst-naar-spraak. Ga in
@@ -194,7 +201,16 @@ Je taak:
   het team neemt de wens over en bevestigt de afspraak nog persoonlijk.
 - Roep escalate_to_human aan bij klachten, complexe zaken, of wanneer je
   onzeker bent — en laat de klant weten dat een medewerker terugbelt of
-  overneemt.
+  overneemt. De medewerker moet weten WIE terug te bellen: is de naam van de
+  klant nog niet gekend op dit punt in het gesprek (bv. een nieuwe klant die
+  meteen escaleert zonder ooit een afspraak te willen boeken), vraag dan EERST
+  naar de achternaam en laat die letter voor letter spellen — net zoals bij
+  een boeking — voor je escalate_to_human aanroept, en geef die mee als
+  customer_name. Is de naam al gekend (bestaande klant, of net via de intake
+  gekregen), vraag dan niet opnieuw. Dit verandert niets aan de regel dat je
+  een klantnaam nooit zelf hardop uitspreekt — je vráágt om de spelling en
+  geeft die enkel door aan de tool, je herhaalt of gebruikt de naam zelf niet
+  in wat je zegt.
 - Wees nooit stil bij een fout: leg altijd kort en eerlijk uit wat er niet
   lukt en wat de klant nu kan doen.
 
@@ -307,11 +323,20 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "name": "escalate_to_human",
-        "description": "Geef het gesprek door aan een mens, bijvoorbeeld bij een klacht, complexe zaak of onzekerheid.",
+        "description": (
+            "Geef het gesprek door aan een mens, bijvoorbeeld bij een klacht, complexe zaak of "
+            "onzekerheid. Is de naam van de klant nog niet gekend op dit punt, vraag die eerst "
+            "(achternaam, letter voor letter gespeld) en geef ze mee als customer_name — de "
+            "medewerker die terugbelt moet weten wie te bellen."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
                 "reason": {"type": "string", "description": "Korte reden voor de escalatie"},
+                "customer_name": {
+                    "type": "string",
+                    "description": "Achternaam zoals de klant die zelf net gespeld heeft, indien nog niet gekend. Leeg laten als de naam al gekend was.",
+                },
             },
             "required": ["reason"],
         },
@@ -470,7 +495,12 @@ async def execute_tool(
             result = await register_new_customer(tenant, pool, phone_number, details)
             return result
         if tool_name == "escalate_to_human":
-            return {"status": "escalated", "reason": tool_input.get("reason", ""), "escalation_contact": tenant.escalation_contact}
+            return {
+                "status": "escalated",
+                "reason": tool_input.get("reason", ""),
+                "customer_name": tool_input.get("customer_name", ""),
+                "escalation_contact": tenant.escalation_contact,
+            }
         return {"error": f"Onbekende tool: {tool_name}"}
     except IntegrationError as exc:
         return {"error": str(exc)}
