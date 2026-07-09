@@ -122,8 +122,11 @@ lisa/
 │                             # dev-tools, geen productiecode: praten in tekst/via microfoon
 │                             #   met exact dezelfde RealtimeConversation als een echte oproep
 ├── scripts/
-│   ├── google_oauth_setup.py  # eenmalige OAuth-setup voor lokaal testen
-│   └── onboard_tenant.py      # interactief: nieuwe klant toevoegen (zie "Klant onboarden")
+│   ├── google_oauth_setup.py     # eenmalige OAuth-setup voor lokaal testen (eigen agenda)
+│   ├── onboard_tenant.py         # interactief: nieuwe klant toevoegen (zie "Klant onboarden")
+│   └── connect_google_calendar.py  # klant koppelt zelf zijn Google Agenda (OAuth) aan een
+│                                 #   al aangemaakte tenant — vult tenants.calendar_config aan,
+│                                 #   geen aparte tabel/module
 ├── tests/
 │   └── test_*.py
 ├── requirements.txt
@@ -203,14 +206,20 @@ komt uit die tenant-config. Eén codebase, oneindig veel klanten en niches.
    - **Nummerportering (trager, definitief):** het bestaande nummer verhuist
      volledig naar Twilio — dan is er geen apart nummer meer nodig. Duurt dagen
      tot weken via de huidige operator.
-2. **Agenda-koppeling**: vandaag enkel Google Calendar — draai
-   `python scripts/google_oauth_setup.py` (of gebruik een service-account voor een
-   Workspace-agenda) om `calendar_config` te genereren. Zonder agenda-koppeling kan
-   `calendar_type="none"` (Lisa noteert enkel, mens plant handmatig in).
-3. **Tenant aanmaken**: `python scripts/onboard_tenant.py` — interactief script dat
+2. **Tenant aanmaken**: `python scripts/onboard_tenant.py` — interactief script dat
    `tenants.upsert_tenant()` aanroept met business_name, niche, twilio_number,
-   calendar_config, system_prompt_extra (toon/begroeting/diensten van deze zaak) en
-   escalation_contact.
+   system_prompt_extra (toon/begroeting/diensten van deze zaak — hier typ je de
+   info die Lisa aan klanten mag geven: uren, prijzen, adres, beleid) en
+   escalation_contact. Kies `calendar_type="none"` als tussenstap als de
+   agenda-koppeling in een aparte stap gebeurt (zie hieronder).
+3. **Agenda-koppeling** (vandaag enkel Google Calendar): tijdens de installatie bij
+   de klant, `python scripts/connect_google_calendar.py <client_id>` — opent Google's
+   eigen inlogscherm, de klant logt zelf in met zijn/haar Google-account en geeft
+   toestemming (geen wachtwoord gedeeld, niets te installeren), en het script vult
+   `calendar_config` van de al aangemaakte tenant automatisch aan. Voor een
+   Workspace-agenda kan ook een service-account gebruikt worden (zie
+   `integrations/google_calendar.py`). Zonder agenda-koppeling blijft
+   `calendar_type="none"` staan (Lisa noteert enkel, mens plant handmatig in).
 4. **Testen**: bel het nieuwe nummer zelf, loop minstens een boeking, annulering en
    escalatie-scenario door voor de klant live gaat (zie CLAUDE.md "Wat 'klaar' betekent").
 5. **Opvolgen**: `/dashboard` toont vanaf de eerste call calls/kosten/escalaties voor
