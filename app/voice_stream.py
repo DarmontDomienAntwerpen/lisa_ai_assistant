@@ -14,9 +14,9 @@ from typing import Optional
 
 from fastapi import WebSocket
 
-import tenants
-from config import get_pool
-from realtime_client import RealtimeConversation
+from app import tenants
+from app.config import get_pool
+from app.realtime_client import RealtimeConversation
 
 logger = logging.getLogger("lisa")
 

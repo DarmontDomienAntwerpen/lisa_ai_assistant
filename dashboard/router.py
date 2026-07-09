@@ -17,10 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-import conversation_store
-import tenants
-import usage_log
-from config import DASHBOARD_PASSWORD, DASHBOARD_USERNAME, get_pool
+from app import conversation_store, tenants, usage_log
+from app.config import DASHBOARD_PASSWORD, DASHBOARD_USERNAME, get_pool
 
 router = APIRouter(prefix="/dashboard")
 _security = HTTPBasic()

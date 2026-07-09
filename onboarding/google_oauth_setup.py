@@ -5,7 +5,7 @@ service-account (zie integrations/google_calendar.py), maar voor lokaal
 testen met je eigen agenda log je zelf in via je browser.
 
 Gebruik:
-  python scripts/google_oauth_setup.py
+  python onboarding/google_oauth_setup.py
 
 Vereist google_oauth_client_secret.json in de projectroot (OAuth Desktop-app
 credentials uit Google Cloud Console). Schrijft dev_google_token.json weg

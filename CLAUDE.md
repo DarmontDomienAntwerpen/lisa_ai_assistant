@@ -29,15 +29,15 @@ Twilio Media Stream → audio-in → OpenAI Realtime API
    → beslist zelf + roept tools aan (agent.execute_tool: agenda, klantsysteem)
    → audio-uit → Twilio Media Stream → klant hoort Lisa
 ```
-`agent.py` blijft bestaan als de **niche-onafhankelijke, provider-onafhankelijke
+`app/agent.py` blijft bestaan als de **niche-onafhankelijke, provider-onafhankelijke
 kern**: tool-definities (`TOOLS`, in OpenAI function-calling-vorm), de
 system-instructies (`build_voice_instructions`), en de eigenlijke tool-uitvoering
 (`execute_tool` — agenda checken/boeken, klant opzoeken/aanmaken, naam-bevestiging
 bij bestaande klant). Die business-logica is wat hier getest en bewaakt wordt, niet
-de keuze van LLM-provider. `realtime_client.py` is de dunne WebSocket-laag naar
+de keuze van LLM-provider. `app/realtime_client.py` is de dunne WebSocket-laag naar
 OpenAI's Realtime API (sessie opzetten, function-calls doorsturen naar
 `agent.execute_tool`, transcript/usage capteren) — gedeeld door zowel
-`voice_stream.py` (Twilio-audio, productie) als de dev-tools (tekst, lokaal
+`app/voice_stream.py` (Twilio-audio, productie) als de dev-tools (tekst, lokaal
 testen), zodat dev-testen exact dezelfde brain/tool-laag raakt als een echte
 oproep.
 
@@ -60,7 +60,7 @@ zie "Later" hieronder — maar niet zolang voice het enige kanaal is.
   medewerker overneemt (uitgesproken door Lisa) en wordt de escalatie gelogd
   (`usage_log`). Een echte warme overdracht van het live gesprek naar de mens (via
   Twilio's call-redirect) is een waardevolle volgende stap, geen dag-1 vereiste.
-- **Outlook / eigen REST-klantsysteem-adapters** — de interface (`integrations/base.py`)
+- **Outlook / eigen REST-klantsysteem-adapters** — de interface (`app/integrations/base.py`)
   ondersteunt dit al, maar er is nu geen tenant die het gebruikt. Bouw pas als een
   klant het nodig heeft.
 
@@ -95,49 +95,61 @@ per rol wat gecheckt is, niet uitgebreid — dit is een werkdocument, geen rappo
 
 ## Projectstructuur (minimaal, robuust, geen groei-rommel)
 
+Gegroepeerd in 4 mappen naar verantwoordelijkheid: productiecode (`app/`),
+het interne dashboard (`dashboard/`), klant-onboarding-stappen (`onboarding/`)
+en niet-productie dev-tools (`devtools/`) — los van de automatische testsuite
+(`tests/`). Binnen `app/` importeert alles via het volledige pad
+(`from app.tenants import ...`, `from app.integrations.base import ...`) —
+geen bare-name imports meer, ook niet tussen bestanden onderling in `app/`.
+
 ```
 lisa/
-├── main.py                  # FastAPI routes: /voice (TwiML) + /media-stream (WebSocket)
-├── agent.py                 # niche- en provider-onafhankelijke kern: tool-definities
-│                             #   (OpenAI function-calling-vorm), system-instructies,
-│                             #   tool-uitvoering (execute_tool). Geen niche-if/else's.
-├── realtime_client.py        # RealtimeConversation: één OpenAI Realtime-sessie —
-│                             #   sessie opzetten, function-calls naar agent.execute_tool,
-│                             #   transcript/usage capteren. Gedeeld door voice + dev-tools.
-├── voice_stream.py           # dunne brug: Twilio Media Stream audio <-> RealtimeConversation
-├── tenants.py                # tenant-lookup op basis van binnenkomend Twilio-nummer
-├── customer_lookup.py        # nieuw/bestaand-check, roept juiste integration-adapter aan
-├── integrations/
-│   ├── base.py                # abstracte interface: check_availability(), book(),
-│   │                           #   lookup_customer(), create_customer()
-│   ├── google_calendar.py     # eerste (en vooralsnog enige) adapter — live voor eerste klant
-│   └── none.py                # fallback: Lisa noteert alleen, mens plant handmatig in
-├── twilio_handler.py          # TwiML voor inkomende oproep: <Connect><Stream> naar /media-stream
-├── conversation_store.py      # gesprekshistorie per (tenant, telefoonnummer)
-├── usage_log.py               # tokens, kosten, kanaal, escalaties, calls (aparte call-teller)
-├── dashboard.py               # intern, read-only: /dashboard — per tenant calls/kosten/
-│                             #   escalaties + transcript-drill-down. HTTP Basic Auth.
-├── config.py                  # env vars, model-keuzes
-├── dev_chat.py, dev_chat_ui.py, dev_voice_ui.py, dev_test_scenarios.py
-│                             # dev-tools, geen productiecode: praten in tekst/via microfoon
-│                             #   met exact dezelfde RealtimeConversation als een echte oproep
-├── scripts/
-│   ├── google_oauth_setup.py     # eenmalige OAuth-setup voor lokaal testen (eigen agenda)
+├── app/                        # productiecode — alles hierin gebruikt `from app.x import y`
+│   ├── main.py                   # FastAPI routes: /voice (TwiML) + /media-stream (WebSocket)
+│   ├── agent.py                  # niche- en provider-onafhankelijke kern: tool-definities
+│   │                             #   (OpenAI function-calling-vorm), system-instructies,
+│   │                             #   tool-uitvoering (execute_tool). Geen niche-if/else's.
+│   ├── realtime_client.py        # RealtimeConversation: één OpenAI Realtime-sessie —
+│   │                             #   sessie opzetten, function-calls naar agent.execute_tool,
+│   │                             #   transcript/usage capteren. Gedeeld door voice + dev-tools.
+│   ├── voice_stream.py           # dunne brug: Twilio Media Stream audio <-> RealtimeConversation
+│   ├── tenants.py                # tenant-lookup op basis van binnenkomend Twilio-nummer
+│   ├── customer_lookup.py        # nieuw/bestaand-check, roept juiste integration-adapter aan
+│   ├── integrations/
+│   │   ├── base.py                 # abstracte interface: check_availability(), book(),
+│   │   │                           #   lookup_customer(), create_customer()
+│   │   ├── google_calendar.py      # eerste (en vooralsnog enige) adapter — live voor eerste klant
+│   │   └── none.py                 # fallback: Lisa noteert alleen, mens plant handmatig in
+│   ├── twilio_handler.py         # TwiML voor inkomende oproep: <Connect><Stream> naar /media-stream
+│   ├── conversation_store.py     # gesprekshistorie per (tenant, telefoonnummer). Ook GDPR-
+│   │                             #   purge-entrypoint: `python -m app.conversation_store`
+│   ├── usage_log.py              # tokens, kosten, kanaal, escalaties, calls (aparte call-teller)
+│   └── config.py                 # env vars, model-keuzes
+├── dashboard/
+│   └── router.py                 # intern, read-only: /dashboard — per tenant calls/kosten/
+│                                 #   escalaties + transcript-drill-down. HTTP Basic Auth.
+├── onboarding/                  # stappen om een nieuwe klant/tenant te boarden
 │   ├── onboard_tenant.py         # interactief: nieuwe klant toevoegen (zie "Klant onboarden")
-│   └── connect_google_calendar.py  # klant koppelt zelf zijn Google Agenda (OAuth) aan een
-│                                 #   al aangemaakte tenant — vult tenants.calendar_config aan,
-│                                 #   geen aparte tabel/module
+│   ├── connect_google_calendar.py  # klant koppelt zelf zijn Google Agenda (OAuth) aan een
+│   │                             #   al aangemaakte tenant — vult tenants.calendar_config aan,
+│   │                             #   geen aparte tabel/module
+│   └── google_oauth_setup.py     # eenmalige OAuth-setup voor Domiens EIGEN testagenda (dev)
+├── devtools/                    # geen productiecode: praten in tekst/via microfoon met exact
+│   ├── dev_chat.py                #   dezelfde RealtimeConversation als een echte oproep
+│   ├── dev_chat_ui.py
+│   ├── dev_voice_ui.py
+│   └── dev_test_scenarios.py
 ├── tests/
 │   └── test_*.py
 ├── requirements.txt
-├── Procfile
-└── CLAUDE.md                  # dit bestand
+├── Procfile                     # web: uvicorn app.main:app ...
+└── CLAUDE.md                    # dit bestand
 ```
 
 Geen extra abstractielagen, geen ORM-zwaargewicht, geen ongebruikte folders.
 Elk bestand heeft één duidelijke verantwoordelijkheid. Niche-verschillen zitten
 uitsluitend in tenant-config en in de integration-adapter — nooit hardcoded in
-`agent.py` of `main.py`.
+`app/agent.py` of `app/main.py`.
 
 ## Datamodel — tenants (elke aangesloten "zaak")
 
@@ -155,19 +167,19 @@ uitsluitend in tenant-config en in de integration-adapter — nooit hardcoded in
 ```
 
 Elke binnenkomende call wordt eerst gekoppeld aan een tenant via het `To`-nummer
-(`tenants.py`). Alles daarna — system prompt, agenda-koppeling, escalatiecontact —
+(`app/tenants.py`). Alles daarna — system prompt, agenda-koppeling, escalatiecontact —
 komt uit die tenant-config. Eén codebase, oneindig veel klanten en niches.
 
 ## Techstack — niet wijzigen zonder reden
 - **Framework:** FastAPI (async, licht — dit is in essentie een webhook-/WebSocket-laag;
-  `dashboard.py` is de enige webapp-achtige uitzondering, en blijft bewust minimaal:
+  `dashboard/router.py` is de enige webapp-achtige uitzondering, en blijft bewust minimaal:
   server-rendered HTML, geen frontend-framework)
 - **Hosting:** Railway (git push = deploy, geen server-beheer, schaalt met gebruik).
-  GDPR-retentiepurge (`conversation_store.purge_expired`, via `python
-  conversation_store.py`) draait NIET automatisch mee met de `web`-service — Railway's
+  GDPR-retentiepurge (`conversation_store.purge_expired`, via `python -m
+  app.conversation_store`) draait NIET automatisch mee met de `web`-service — Railway's
   cron-schedule is een handmatige stap in de Railway-dashboard (Settings van een
-  tweede service die hetzelfde repo gebruikt met start command `python
-  conversation_store.py`, dagelijks). Niet iets dat via een config-bestand alleen
+  tweede service die hetzelfde repo gebruikt met start command `python -m
+  app.conversation_store`, dagelijks). Niet iets dat via een config-bestand alleen
   op te zetten is; controleer dit expliciet bij het opzetten van een nieuw project.
 - **DB:** Postgres (Railway add-on) — tenants, gesprekshistorie, usage_log, calls
 - **LLM:** OpenAI Realtime API (`gpt-realtime`) — voert het hele
@@ -177,12 +189,12 @@ komt uit die tenant-config. Eén codebase, oneindig veel klanten en niches.
 - **Telefonie:** Twilio Voice — bestaand zaaknummer, inkomende oproep wordt via Media
   Streams (WebSocket) doorgestuurd naar OpenAI Realtime
 - **Eerste agenda-adapter:** Google Calendar — enige adapter vandaag, andere volgen
-  dezelfde interface uit `integrations/base.py` zodra een klant het nodig heeft
+  dezelfde interface uit `app/integrations/base.py` zodra een klant het nodig heeft
 
 ## Niet-onderhandelbaar
 1. **Klant-check eerst.** Elk gesprek opent met bepalen: nieuw of bestaand. Geen
    verdere actie (afspraak, dossier ophalen) zonder dit vastgesteld te hebben.
-2. **Niche-onafhankelijke kern.** `agent.py` en `main.py` bevatten geen if/else op
+2. **Niche-onafhankelijke kern.** `app/agent.py` en `app/main.py` bevatten geen if/else op
    niche. Verschillen tussen bedrijven leven in tenant-config en adapters.
 3. **GDPR.** Gespreksdata encrypted, retentietermijn expliciet, geen data naar derde
    partijen zonder noodzaak.
@@ -206,14 +218,14 @@ komt uit die tenant-config. Eén codebase, oneindig veel klanten en niches.
    - **Nummerportering (trager, definitief):** het bestaande nummer verhuist
      volledig naar Twilio — dan is er geen apart nummer meer nodig. Duurt dagen
      tot weken via de huidige operator.
-2. **Tenant aanmaken**: `python scripts/onboard_tenant.py` — interactief script dat
+2. **Tenant aanmaken**: `python onboarding/onboard_tenant.py` — interactief script dat
    `tenants.upsert_tenant()` aanroept met business_name, niche, twilio_number,
    system_prompt_extra (toon/begroeting/diensten van deze zaak — hier typ je de
    info die Lisa aan klanten mag geven: uren, prijzen, adres, beleid) en
    escalation_contact. Kies `calendar_type="none"` als tussenstap als de
    agenda-koppeling in een aparte stap gebeurt (zie hieronder).
 3. **Agenda-koppeling** (vandaag enkel Google Calendar): tijdens de installatie bij
-   de klant, `python scripts/connect_google_calendar.py <client_id>` — opent Google's
+   de klant, `python onboarding/connect_google_calendar.py <client_id>` — opent Google's
    eigen inlogscherm, de klant logt zelf in met zijn/haar Google-account en geeft
    toestemming (geen wachtwoord gedeeld, niets te installeren), en het script vult
    `calendar_config` van de al aangemaakte tenant automatisch aan. Voor een
@@ -225,8 +237,8 @@ komt uit die tenant-config. Eén codebase, oneindig veel klanten en niches.
 5. **Opvolgen**: `/dashboard` toont vanaf de eerste call calls/kosten/escalaties voor
    deze tenant — geen aparte setup nodig, dat loopt automatisch mee.
 
-Niet-onderhandelbaar: nooit een niche-specifieke if/else toevoegen aan `agent.py` of
-`main.py` om een nieuwe klant te onboarden — alle verschillen horen in tenant-config,
+Niet-onderhandelbaar: nooit een niche-specifieke if/else toevoegen aan `app/agent.py` of
+`app/main.py` om een nieuwe klant te onboarden — alle verschillen horen in tenant-config,
 `system_prompt_extra`, of een nieuwe integration-adapter.
 
 ## Wat "klaar" betekent

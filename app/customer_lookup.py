@@ -15,8 +15,8 @@ from typing import Any, Optional
 
 import asyncpg
 
-from config import decrypt_text, encrypt_text
-from integrations.base import get_integration
+from app.config import decrypt_text, encrypt_text
+from app.integrations.base import get_integration
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS customers (

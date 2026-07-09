@@ -16,7 +16,7 @@ os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost/test")
 os.environ.setdefault("CONVERSATION_ENCRYPTION_KEY", Fernet.generate_key().decode())
 
-from tenants import Tenant  # noqa: E402
+from app.tenants import Tenant  # noqa: E402
 
 
 @pytest.fixture

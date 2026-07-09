@@ -1,7 +1,7 @@
 import pytest
 
-from config import encrypt_text
-from conversation_store import append_message, get_history
+from app.config import encrypt_text
+from app.conversation_store import append_message, get_history
 
 
 @pytest.mark.asyncio

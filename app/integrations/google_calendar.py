@@ -11,7 +11,7 @@ of, voor lokaal testen met een persoonlijke (niet-Workspace) agenda:
                          "client_id", "client_secret", "scopes"},
   "calendar_id": "primary"
 }
-Zie scripts/google_oauth_setup.py om oauth_credentials te genereren.
+Zie onboarding/google_oauth_setup.py om oauth_credentials te genereren.
 
 Google Calendar heeft geen klant-CRM, dus lookup/create_customer vallen terug
 op de lokale customers-tabel (customer_lookup.py).
@@ -26,8 +26,8 @@ from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from customer_lookup import local_create_customer, local_lookup_customer
-from integrations.base import Integration, IntegrationError
+from app.customer_lookup import local_create_customer, local_lookup_customer
+from app.integrations.base import Integration, IntegrationError
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 

@@ -16,11 +16,9 @@ from typing import Any, AsyncIterator, Optional
 
 import websockets
 
-import agent
-import conversation_store
-import usage_log
-from config import MAX_TOOL_ITERATIONS, OPENAI_API_KEY, OPENAI_REALTIME_MODEL, OPENAI_REALTIME_VOICE
-from customer_lookup import find_or_flag_new
+from app import agent, conversation_store, usage_log
+from app.config import MAX_TOOL_ITERATIONS, OPENAI_API_KEY, OPENAI_REALTIME_MODEL, OPENAI_REALTIME_VOICE
+from app.customer_lookup import find_or_flag_new
 
 logger = logging.getLogger("lisa")
 

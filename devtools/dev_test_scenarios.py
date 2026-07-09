@@ -6,13 +6,15 @@ from __future__ import annotations
 
 import asyncio
 
-import conversation_store
-import customer_lookup
-import tenants
-import usage_log
-from config import close_pool, get_pool
-from realtime_client import RealtimeConversation
-from tenants import Tenant
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app import conversation_store, customer_lookup, tenants, usage_log  # noqa: E402
+from app.config import close_pool, get_pool  # noqa: E402
+from app.realtime_client import RealtimeConversation  # noqa: E402
+from app.tenants import Tenant  # noqa: E402
 
 TENANT = Tenant(
     client_id="dev_test",

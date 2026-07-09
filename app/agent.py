@@ -14,8 +14,8 @@ from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from customer_lookup import find_or_flag_new, register_new_customer
-from integrations.base import IntegrationError, get_integration
+from app.customer_lookup import find_or_flag_new, register_new_customer
+from app.integrations.base import IntegrationError, get_integration
 
 # Google Calendar (en de meeste agenda-API's) weigeren timestamps zonder
 # tijdzone. Het model geeft soms een tijdstip zonder offset door — in dat

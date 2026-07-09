@@ -4,11 +4,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import agent
-import conversation_store
-import usage_log
-from config import MAX_TOOL_ITERATIONS
-from realtime_client import RealtimeConversation
+from app import agent, conversation_store, usage_log
+from app.config import MAX_TOOL_ITERATIONS
+from app.realtime_client import RealtimeConversation
 
 
 class FakeWS:

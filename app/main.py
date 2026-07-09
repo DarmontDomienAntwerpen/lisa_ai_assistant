@@ -11,14 +11,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response, WebSocket
 
-import conversation_store
-import customer_lookup
-import tenants
-import usage_log
-import voice_stream
-from config import close_pool, get_pool
-from dashboard import router as dashboard_router
-from twilio_handler import twiml_for_incoming_call, twiml_for_missing_tenant
+from app import conversation_store, customer_lookup, tenants, usage_log, voice_stream
+from app.config import close_pool, get_pool
+from app.twilio_handler import twiml_for_incoming_call, twiml_for_missing_tenant
+from dashboard.router import router as dashboard_router
 
 logger = logging.getLogger("lisa")
 

@@ -6,7 +6,7 @@ Gebruik:
   open http://localhost:8002, klik "Start gesprek", geef microfoon-toegang
 
 Gebruikt dezelfde Google Calendar-testagenda als dev_chat_ui.py (via
-dev_google_token.json — draai eerst scripts/google_oauth_setup.py als dat
+dev_google_token.json — draai eerst onboarding/google_oauth_setup.py als dat
 bestand ontbreekt). Zelfde RealtimeConversation-kern (realtime_client.py)
 als een echte oproep, enkel audio_format="pcm16" i.p.v. Twilio's
 "g711_ulaw" — browsers spreken van nature PCM, geen telefonie-codec. Niet
@@ -19,23 +19,23 @@ import base64
 import json
 import logging
 from contextlib import asynccontextmanager
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
-import conversation_store
-import customer_lookup
-import tenants
-import usage_log
-from config import close_pool, get_pool
-from realtime_client import RealtimeConversation
-from tenants import Tenant
+from app import conversation_store, customer_lookup, tenants, usage_log
+from app.config import close_pool, get_pool
+from app.realtime_client import RealtimeConversation
+from app.tenants import Tenant
 
 logger = logging.getLogger("lisa")
 
-TOKEN_PATH = Path(__file__).resolve().parent / "dev_google_token.json"
+TOKEN_PATH = Path(__file__).resolve().parent.parent / "dev_google_token.json"
 # Dezelfde "Lisa test"-kalender als dev_chat_ui.py.
 CALENDAR_ID = "c24b156dda02f2d3c8e23e8c419dbe1d0324eb46a1f92c4ac1892c56710b9774@group.calendar.google.com"
 
@@ -43,7 +43,7 @@ CALENDAR_ID = "c24b156dda02f2d3c8e23e8c419dbe1d0324eb46a1f92c4ac1892c56710b9774@
 def _load_tenant() -> Tenant:
     if not TOKEN_PATH.exists():
         raise SystemExit(
-            f"Ontbreekt: {TOKEN_PATH} — draai eerst 'python scripts/google_oauth_setup.py'."
+            f"Ontbreekt: {TOKEN_PATH} — draai eerst 'python onboarding/google_oauth_setup.py'."
         )
     import json as _json
 

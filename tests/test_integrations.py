@@ -2,9 +2,9 @@ import dataclasses
 
 import pytest
 
-from integrations.base import get_integration
-from integrations.google_calendar import GoogleCalendarIntegration
-from integrations.none import NoIntegration
+from app.integrations.base import get_integration
+from app.integrations.google_calendar import GoogleCalendarIntegration
+from app.integrations.none import NoIntegration
 
 
 def test_get_integration_dispatches_on_calendar_type(tenant, fake_pool):

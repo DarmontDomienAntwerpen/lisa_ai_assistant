@@ -66,11 +66,11 @@ def get_integration(tenant: Any, pool: Any) -> Integration:
     """
     # Lazy imports om circulaire afhankelijkheden en onnodige SDK-imports te vermijden.
     if tenant.calendar_type == "google_calendar":
-        from integrations.google_calendar import GoogleCalendarIntegration
+        from app.integrations.google_calendar import GoogleCalendarIntegration
 
         return GoogleCalendarIntegration(tenant, pool)
     if tenant.calendar_type == "none":
-        from integrations.none import NoIntegration
+        from app.integrations.none import NoIntegration
 
         return NoIntegration(tenant, pool)
     raise ValueError(f"Onbekend calendar_type: {tenant.calendar_type!r}")

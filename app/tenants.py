@@ -78,7 +78,7 @@ async def list_tenants(pool: asyncpg.Pool) -> list[Tenant]:
 
 async def get_tenant_by_client_id(pool: asyncpg.Pool, client_id: str) -> Optional[Tenant]:
     """Zoekt de tenant op client_id — bv. voor onboarding-stappen die een
-    reeds aangemaakte tenant verder aanvullen (zie scripts/connect_google_calendar.py)."""
+    reeds aangemaakte tenant verder aanvullen (zie onboarding/connect_google_calendar.py)."""
     async with pool.acquire() as conn:
         record = await conn.fetchrow("SELECT * FROM tenants WHERE client_id = $1", client_id)
     if record is None:

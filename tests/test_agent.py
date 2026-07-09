@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import agent
+from app import agent
 
 
 def _fake_adapter(bookings, cancel_result=None, lookup_customer=None, book_result=None, busy_periods=None):

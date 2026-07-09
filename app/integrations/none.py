@@ -10,8 +10,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Optional
 
-from customer_lookup import local_create_customer, local_lookup_customer
-from integrations.base import Integration
+from app.customer_lookup import local_create_customer, local_lookup_customer
+from app.integrations.base import Integration
 
 
 class NoIntegration(Integration):

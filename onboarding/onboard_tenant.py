@@ -6,7 +6,7 @@ CLAUDE.md "Klant onboarden". Vraagt alle tenant-velden interactief op en
 roept tenants.upsert_tenant() aan.
 
 Gebruik:
-  python scripts/onboard_tenant.py
+  python onboarding/onboard_tenant.py
 
 Vereist dat het Twilio-nummer al gekocht/toegewezen is in de Twilio console,
 met de "A call comes in" webhook op POST https://<railway-domein>/voice.
@@ -21,9 +21,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import tenants  # noqa: E402
-from config import close_pool, get_pool  # noqa: E402
-from tenants import Tenant  # noqa: E402
+from app import tenants  # noqa: E402
+from app.config import close_pool, get_pool  # noqa: E402
+from app.tenants import Tenant  # noqa: E402
 
 
 def _slugify(business_name: str) -> str:
@@ -51,7 +51,7 @@ def _build_calendar_config() -> tuple[str, dict]:
         return "google_calendar", {"service_account_info": service_account_info, "calendar_id": calendar_id}
 
     if choice == "2":
-        path = _prompt("Pad naar OAuth-token JSON (zie scripts/google_oauth_setup.py)", "dev_google_token.json")
+        path = _prompt("Pad naar OAuth-token JSON (zie onboarding/google_oauth_setup.py)", "dev_google_token.json")
         oauth_credentials = json.loads(Path(path).expanduser().read_text())
         calendar_id = _prompt("Calendar ID", "primary")
         return "google_calendar", {"oauth_credentials": oauth_credentials, "calendar_id": calendar_id}

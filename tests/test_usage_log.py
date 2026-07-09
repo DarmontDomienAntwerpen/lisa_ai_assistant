@@ -1,7 +1,7 @@
 import pytest
 
-from config import OPENAI_REALTIME_MODEL
-from usage_log import calculate_cost_usd, get_tenant_usage_summary, log_call_start
+from app.config import OPENAI_REALTIME_MODEL
+from app.usage_log import calculate_cost_usd, get_tenant_usage_summary, log_call_start
 
 
 def test_calculate_cost_usd_scales_with_tokens():

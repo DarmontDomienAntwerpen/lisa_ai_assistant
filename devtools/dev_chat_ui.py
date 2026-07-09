@@ -1,7 +1,7 @@
 """Dev-tool: chat met Lisa in de browser, gekoppeld aan een echte Google Calendar.
 
 Gebruik:
-  1. python scripts/google_oauth_setup.py   (eenmalig, schrijft dev_google_token.json)
+  1. python onboarding/google_oauth_setup.py   (eenmalig, schrijft dev_google_token.json)
   2. python dev_chat_ui.py
   3. open http://localhost:8001
 
@@ -14,22 +14,22 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import asynccontextmanager
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-import conversation_store
-import customer_lookup
-import tenants
-import usage_log
-from config import close_pool, get_pool
-from realtime_client import RealtimeConversation
-from tenants import Tenant
+from app import conversation_store, customer_lookup, tenants, usage_log
+from app.config import close_pool, get_pool
+from app.realtime_client import RealtimeConversation
+from app.tenants import Tenant
 
-TOKEN_PATH = Path(__file__).resolve().parent / "dev_google_token.json"
+TOKEN_PATH = Path(__file__).resolve().parent.parent / "dev_google_token.json"
 TEST_PHONE_NUMBER = "+32499999998"
 # Aparte "Lisa test"-kalender in het gekoppelde Google-account, niet de
 # persoonlijke hoofdagenda ("primary") van dat account.
@@ -39,7 +39,7 @@ CALENDAR_ID = "c24b156dda02f2d3c8e23e8c419dbe1d0324eb46a1f92c4ac1892c56710b9774@
 def _load_tenant() -> Tenant:
     if not TOKEN_PATH.exists():
         raise SystemExit(
-            f"Ontbreekt: {TOKEN_PATH} — draai eerst 'python scripts/google_oauth_setup.py'."
+            f"Ontbreekt: {TOKEN_PATH} — draai eerst 'python onboarding/google_oauth_setup.py'."
         )
     oauth_credentials = json.loads(TOKEN_PATH.read_text())
     return Tenant(

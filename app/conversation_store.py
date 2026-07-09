@@ -12,7 +12,7 @@ from typing import Any
 
 import asyncpg
 
-from config import CONVERSATION_HISTORY_LIMIT, CONVERSATION_RETENTION_DAYS, decrypt_text, encrypt_text
+from app.config import CONVERSATION_HISTORY_LIMIT, CONVERSATION_RETENTION_DAYS, decrypt_text, encrypt_text
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS conversations (
@@ -78,8 +78,8 @@ async def purge_expired(pool: asyncpg.Pool, retention_days: int = CONVERSATION_R
 
 
 async def _run_purge() -> None:
-    """Entrypoint voor de Railway cron job: `python conversation_store.py`."""
-    from config import close_pool, get_pool
+    """Entrypoint voor de Railway cron job: `python -m app.conversation_store`."""
+    from app.config import close_pool, get_pool
 
     pool = await get_pool()
     deleted = await purge_expired(pool)

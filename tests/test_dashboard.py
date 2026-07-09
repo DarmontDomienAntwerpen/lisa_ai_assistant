@@ -5,8 +5,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import dashboard
-from tenants import Tenant
+import dashboard.router as dashboard
+from app.tenants import Tenant
 
 
 @pytest.fixture

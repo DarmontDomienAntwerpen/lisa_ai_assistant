@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from config import decrypt_text, encrypt_text
-from customer_lookup import find_or_flag_new, local_create_customer, local_lookup_customer, register_new_customer
+from app.config import decrypt_text, encrypt_text
+from app.customer_lookup import find_or_flag_new, local_create_customer, local_lookup_customer, register_new_customer
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,6 @@
 import pytest
 
-from tenants import Tenant, get_tenant_by_client_id, get_tenant_by_number, list_tenants
+from app.tenants import Tenant, get_tenant_by_client_id, get_tenant_by_number, list_tenants
 
 
 @pytest.mark.asyncio
