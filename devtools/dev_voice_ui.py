@@ -57,6 +57,7 @@ def _load_tenant() -> Tenant:
         calendar_config={"calendar_id": CALENDAR_ID, "oauth_credentials": oauth_credentials},
         system_prompt_extra="Wees warm en informeel, typisch Vlaams.",
         escalation_contact="+3247000009",
+        escalation_email="darmontdigital@gmail.com",
     )
 
 

@@ -101,8 +101,10 @@ async def overview(_: None = Depends(_require_auth)) -> str:
         last_call = summary["last_call_at"].strftime("%Y-%m-%d %H:%M") if summary["last_call_at"] else "—"
         invoice = _estimated_invoice_eur(summary["call_count"])
 
-        ai_cost_usd = summary["total_cost_usd"]
-        twilio_cost_usd = summary["total_twilio_cost_usd"] + TWILIO_MONTHLY_NUMBER_USD
+        # asyncpg geeft SUM(numeric)/EXTRACT(EPOCH ...) terug als Decimal —
+        # expliciet naar float, anders crasht de optelling hieronder.
+        ai_cost_usd = float(summary["total_cost_usd"])
+        twilio_cost_usd = float(summary["total_twilio_cost_usd"]) + TWILIO_MONTHLY_NUMBER_USD
         variable_cost_eur = (ai_cost_usd + twilio_cost_usd) * USD_TO_EUR_RATE
 
         total_invoice_eur += invoice

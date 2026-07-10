@@ -93,10 +93,12 @@ async def init_schema(pool: asyncpg.Pool) -> None:
 def twilio_cost_usd(duration_seconds: Optional[float]) -> float:
     """Schatting van de telefoniekost (inbound + Media Streams gecombineerd
     tarief) voor één call — 0 zolang de duur nog niet gekend is (call loopt
-    nog, of het proces crashte voor ended_at gezet werd)."""
+    nog, of het proces crashte voor ended_at gezet werd). asyncpg geeft
+    EXTRACT(EPOCH FROM ...) soms terug als Decimal i.p.v. float — expliciet
+    casten, anders crasht de vermenigvuldiging met TWILIO_PER_MINUTE_USD."""
     if not duration_seconds:
         return 0.0
-    return (duration_seconds / 60) * TWILIO_PER_MINUTE_USD
+    return (float(duration_seconds) / 60) * TWILIO_PER_MINUTE_USD
 
 
 def cost_components_usd(model: str, input_tokens: int, output_tokens: int, cached_input_tokens: int = 0) -> dict[str, float]:

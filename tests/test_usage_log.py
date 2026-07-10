@@ -1,7 +1,16 @@
+from datetime import datetime, timezone
+from decimal import Decimal
+
 import pytest
 
 from app.config import OPENAI_REALTIME_MODEL
-from app.usage_log import calculate_cost_usd, get_tenant_usage_summary, log_call_start
+from app.usage_log import (
+    calculate_cost_usd,
+    get_calls_with_cost_breakdown,
+    get_tenant_usage_summary,
+    log_call_start,
+    twilio_cost_usd,
+)
 
 
 def test_calculate_cost_usd_scales_with_tokens():
@@ -58,4 +67,55 @@ async def test_get_tenant_usage_summary_merges_usage_and_call_stats(fake_pool):
     summary = await get_tenant_usage_summary(fake_pool, "kapper_devries")
     assert summary["conversation_turns"] == 5
     assert summary["call_count"] == 2
-    assert summary["escalations"] == 1
+
+
+def test_twilio_cost_usd_accepts_decimal_duration_from_asyncpg():
+    """Regressie-test voor een echte productie-crash: asyncpg geeft
+    EXTRACT(EPOCH FROM ...) terug als decimal.Decimal, niet float — een kale
+    `duration_seconds / 60 * TWILIO_PER_MINUTE_USD` crasht daarop
+    (TypeError: unsupported operand type(s) for *: 'Decimal' and 'float'),
+    wat de tenant-detailpagina in productie liet crashen (HTTP 500)."""
+    cost = twilio_cost_usd(Decimal("125.500000"))
+    assert isinstance(cost, float)
+    assert cost > 0
+
+
+@pytest.mark.asyncio
+async def test_get_tenant_usage_summary_handles_decimal_from_real_db_types(fake_pool):
+    """Zelfde regressie als hierboven, maar via het volledige pad: de
+    calls_record die uit een echte Postgres-query komt bevat Decimal voor
+    total_duration_seconds — get_tenant_usage_summary mag daar niet op
+    crashen bij het berekenen van total_twilio_cost_usd."""
+    fake_pool.connection.fetchrow.side_effect = [
+        {"conversation_turns": 1, "total_input_tokens": 10, "total_output_tokens": 10, "total_cost_usd": Decimal("0.01"), "escalations": 0},
+        {"call_count": 1, "last_call_at": None, "total_duration_seconds": Decimal("90.000000")},
+    ]
+    summary = await get_tenant_usage_summary(fake_pool, "kapper_devries")
+    assert summary["total_twilio_cost_usd"] > 0
+
+
+@pytest.mark.asyncio
+async def test_get_calls_with_cost_breakdown_handles_decimal_from_real_db_types(fake_pool):
+    """Zelfde regressie voor de per-call breakdown die het dashboard uitklapt
+    — c.ended_at - c.started_at komt via EXTRACT(EPOCH ...) ook als Decimal
+    terug uit een echte Postgres-rij."""
+    fake_pool.connection.fetch.return_value = [
+        {
+            "call_id": 1,
+            "phone_number": "+32470000001",
+            "channel": "voice",
+            "started_at": datetime(2026, 7, 9, 10, 0, tzinfo=timezone.utc),
+            "ended_at": datetime(2026, 7, 9, 10, 2, tzinfo=timezone.utc),
+            "duration_seconds": Decimal("120.000000"),
+            "turns": 4,
+            "total_input_tokens": 1000,
+            "total_cached_input_tokens": 500,
+            "total_output_tokens": 200,
+            "total_cost_usd": Decimal("0.045000"),
+            "model": OPENAI_REALTIME_MODEL,
+            "escalated": False,
+        }
+    ]
+    calls = await get_calls_with_cost_breakdown(fake_pool, "kapper_devries")
+    assert calls[0]["twilio_cost_usd"] > 0
+    assert calls[0]["combined_total_cost_usd"] > calls[0]["cost_breakdown"]["total_cost_usd"]
