@@ -106,7 +106,7 @@ async def test_handle_function_call_reports_booking_event_on_cancel(tenant, fake
     event = await conv._handle_function_call({
         "call_id": "c2",
         "name": "cancel_appointment",
-        "arguments": json.dumps({"booking_id": "abc", "confirmed_customer_name": "Jan"}),
+        "arguments": json.dumps({"booking_id": "abc"}),
     })
 
     assert event == {"type": "booking_event", "status": "cancelled", "customer_name": "Jan"}

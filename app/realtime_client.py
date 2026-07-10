@@ -49,7 +49,6 @@ class RealtimeConversation:
         self.audio = audio
         self.audio_format = audio_format  # "g711_ulaw" (Twilio) of "pcm16" (browser-mic dev-tool)
         self.escalated = False
-        self._was_new_at_start = False
         self._tool_calls_this_turn = 0
         self._had_function_call_this_response = False
         # Voor onderbrekingen (barge-in): bij een WebSocket-verbinding (i.t.t.
@@ -67,7 +66,6 @@ class RealtimeConversation:
     async def connect(self) -> None:
         self.call_id = await usage_log.log_call_start(self.pool, self.tenant.client_id, self.phone_number, self.channel)
         customer, is_new = await find_or_flag_new(self.tenant, self.pool, self.phone_number)
-        self._was_new_at_start = is_new
         instructions = agent.build_voice_instructions(self.tenant, customer, is_new)
 
         self._ws = await websockets.connect(
@@ -250,9 +248,7 @@ class RealtimeConversation:
                 "requires_human": True,
             }
         else:
-            result = await agent.execute_tool(
-                self.tenant, self.pool, self.phone_number, name, tool_input, self._was_new_at_start
-            )
+            result = await agent.execute_tool(self.tenant, self.pool, self.phone_number, name, tool_input)
 
         tool_event: Optional[dict[str, Any]] = None
         was_escalated = self.escalated

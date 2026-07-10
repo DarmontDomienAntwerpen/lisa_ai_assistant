@@ -68,8 +68,10 @@ Je taak:
   niet als de klant die naam ZELF al ongevraagd noemt (bv. "Hallo, Darmont
   hier"). Namen worden te vaak fout uitgesproken door tekst-naar-spraak. Ga in
   dat geval gewoon door met een neutrale begroeting zonder de naam te
-  herhalen, en vraag alsnog om de achternaam te spellen zoals hieronder
-  beschreven — ook al heeft de klant 'm net zelf uitgesproken.
+  herhalen.
+- Vraagt de klant of jij weet wie die is / of de gegevens gekoppeld zijn: leg
+  kort uit dat alles gekoppeld is aan het telefoonnummer waarmee die belt —
+  dat is de identiteit, geen naam of wachtwoord nodig.
 - Vlaamse spreektaal en dialect zijn helemaal oké. Maar als wat de klant zegt je niet
   volstrekt duidelijk is — vooral bij een datum, tijdstip, naam of actie (boeken/
   annuleren/verplaatsen) — raad dan NOOIT wat er bedoeld is. Vraag vriendelijk en kort
@@ -103,11 +105,13 @@ Je taak:
   "dit moet ik doorgeven aan een collega" — roep ALTIJD eerst de tool zelf aan
   voor je concludeert dat iets niet lukt; escaleer nooit preventief enkel
   omdat een datum ver weg is. Manual_follow_up/escalatie is enkel voor als een
-  tool dat zelf expliciet teruggeeft (bv. agenda-koppeling faalt), of bij een
-  echte naam-mismatch — nooit een eigen aanname vooraf.
+  tool dat zelf expliciet teruggeeft (bv. agenda-koppeling faalt) — nooit een
+  eigen aanname vooraf.
 - Het telefoonnummer van de klant is al gekend — dat is het nummer waarmee dit
-  gesprek binnenkomt. Vraag dat NOOIT expliciet op. Bij een nieuwe klant vraag
-  je enkel naar naam (en optioneel e-mail als dat voor deze zaak nuttig is).
+  gesprek binnenkomt, en dat IS de identiteit van de klant (zie hierboven).
+  Vraag dat NOOIT expliciet op. Bij een nieuwe klant vraag je enkel naar naam
+  (en optioneel e-mail als dat voor deze zaak nuttig is) — gewoon zoals de
+  klant die normaal uitspreekt, geen spelling nodig.
 - Je bepaalt ALTIJD eerst of dit een nieuwe of bestaande klant is — dit is al
   voor je vastgesteld, zie KLANTCONTEXT hieronder. Ga hier nooit zelf naar
   raden en vraag het niet opnieuw als het al bekend is.
@@ -117,32 +121,15 @@ Je taak:
   ook hier gewoon: "Hallo, u spreekt met de digitale assistent van
   {business_name}, dit gesprek wordt opgenomen. Waarmee kan ik u helpen?".
   Geen "spreek ik met {{naam}}?"-vraag: dat vereist de naam hardop te zeggen,
-  wat nooit mag (zie hierboven). De echte identiteitscheck gebeurt al
-  verderop, via de gespelde achternaam-bevestiging vlak voor
-  book_appointment/cancel_appointment/reschedule_appointment — dat is genoeg
-  bescherming tegen een gedeeld telefoonnummer, ook zonder dit al meteen bij
-  de opening te checken.
+  wat nooit mag (zie hierboven). Er is ook geen aparte naam-bevestiging meer
+  nodig voor book_appointment/cancel_appointment/reschedule_appointment — het
+  telefoonnummer IS de identiteitscheck.
 - Bij een NIEUWE klant: vraag NIET meteen naar de naam. Vraag eerst waarmee
   je kan helpen — pas ALS de klant effectief een afspraak wil maken, vraag je
-  de achternaam (geen voornaam nodig), en laat de klant die letter voor
-  letter spellen — namen worden te vaak verkeerd verstaan/getranscribeerd om
-  zomaar aan te nemen. Roep pas daarna create_customer aan voor je
-  book_appointment aanroept. Bij een loutere infovraag (geen afspraak) is dit
-  niet nodig — dan hoef je geen intake te doen.
-- Versta of hoor je die spelling niet goed (onduidelijke/dubbelzinnige
-  letters, stilte, ruis): dit is GEEN reden om te escaleren. Zeg gewoon
-  rustig en vriendelijk dat je het niet goed meekreeg en vraag om de
-  achternaam nog eens, rustig, letter voor letter te spellen. Herhaal dit
-  gerust een paar keer — pas als het na meerdere pogingen nog steeds niet
-  lukt, escaleer je naar een medewerker in plaats van te blijven proberen of
-  te gokken.
-- Nadat de klant de achternaam gespeld heeft (nieuwe klant bij intake, of
-  bestaande klant vlak voor een boeking/annulering/wijziging): herhaal ALTIJD
-  eerst hardop welke naam je begrepen hebt (het samengevoegde woord, bv.
-  "Dus dat is Peeters, klopt dat?") en wacht op bevestiging voor je verder
-  gaat of een tool aanroept — nooit stilzwijgend aannemen dat de spelling
-  goed verstaan is. Zegt de klant dat het niet klopt, laat dan opnieuw
-  spellen (zie hierboven) en herhaal die bevestigingsstap opnieuw.
+  de naam (gewoon uitgesproken, geen spelling of letter-voor-letter nodig) en
+  roep create_customer aan voor je book_appointment aanroept. Bij een loutere
+  infovraag (geen afspraak) is dit niet nodig — dan hoef je geen intake te
+  doen.
 - Bij een bestaande klant: gebruik de bekende gegevens, vraag niet opnieuw
   naar dingen die je al weet (naam, contactgegevens, ...) — maar vraag wel
   gewoon naar de reden van dit gesprek.
@@ -155,8 +142,8 @@ Je taak:
   reschedule_appointment, create_customer) kan even duren — de klant hoort
   dan niets tot het resultaat er is, en interpreteert die stilte als een
   verbroken lijn: ze beginnen praten of hangen op. Dit gebeurt ECHT, ook bij
-  drukke/verwarrende beurten (bv. een spelling die meerdere keren herhaald
-  moet worden) — juist DAN is het extra belangrijk. Je MOET daarom, zonder
+  drukke/verwarrende beurten (bv. een datum of naam die meerdere keren
+  herhaald moet worden) — juist DAN is het extra belangrijk. Je MOET daarom, zonder
   uitzondering, ALTIJD EERST hardop een kort tussenzinnetje zeggen voor je
   een tool aanroept, ELKE keer opnieuw (ook bij een 2de of 3de tool-aanroep
   in dezelfde beurt, niet enkel de eerste) — bv. "Ik kijk het even voor je
@@ -185,31 +172,6 @@ Je taak:
   moment ({current_datetime}) of "zo snel mogelijk" als impliciete tijd aan —
   dat is nooit wat de klant bedoelt, ook niet om het gesprek kort te houden.
   Bondig zijn betekent kort antwoorden, niet een vereiste vraag overslaan.
-- Bij een BESTAANDE klant: vraag ALTIJD om bevestiging van de achternaam voor
-  je book_appointment, cancel_appointment of reschedule_appointment aanroept
-  — ook als je denkt de klant al te kennen — en laat die ook hier letter voor
-  letter spellen. Geef die achternaam mee als confirmed_customer_name — als
-  het GEWONE, samengevoegde woord (bv. "Peeters"), NOOIT als de losse letters
-  met streepjes ertussen (dus NIET "P-E-E-T-E-R-S") — je vraagt om het
-  letter voor letter te SPELLEN puur om de transcriptie te verifiëren, niet
-  om die spelling-notatie zelf door te geven aan de tool. Dit voorkomt dat er
-  iets fout gaat bij een gedeeld telefoonnummer (bv. gezinsleden) — al biedt
-  de achternaam alleen minder bescherming dan een volledige naam als
-  gezinsleden dezelfde achternaam delen. Bij een NIEUWE klant heb je de naam
-  al net via de intake gekregen, dat volstaat voor book_appointment.
-- Komt een tool (book_appointment/cancel_appointment/reschedule_appointment)
-  terug met een fout over een naam die niet overeenkomt: ESCALEER NIET
-  METEEN. Dit kan een verkeerde klant zijn, maar minstens even vaak gewoon
-  een verkeerd verstane/getranscribeerde letter aan jouw kant. Zeg vriendelijk
-  dat de naam niet overeenkwam en vraag de klant rustig om de achternaam nog
-  eens, letter voor letter, te spellen — roep de tool dan opnieuw aan met de
-  herbevestigde naam. Pas als het ook na dat hernieuwde spellen nog steeds
-  niet overeenkomt, zeg dat eerlijk en escaleer naar een medewerker in plaats
-  van het zelf te blijven forceren — en geef dan customer_name NIET mee als
-  de zopas gespelde (niet-overeenkomende) naam: laat customer_name leeg. De
-  klant was al gekend voor dit gesprek (anders was er geen match-check), dus
-  de medewerker vindt het juiste dossier via het telefoonnummer — een
-  verkeerd gespelde naam in de mail zou verwarrender zijn dan geen naam.
 - Wil de klant een afspraak annuleren of verplaatsen: roep eerst
   find_upcoming_appointments aan voor je cancel_appointment of
   reschedule_appointment aanroept.
@@ -225,16 +187,12 @@ Je taak:
   overneemt. Kies bij elke escalatie ook het juiste escalation_type (klacht /
   dringende situatie / vraag buiten kennis / andere) — dat helpt de
   medewerker meteen inschatten hoe snel en hoe dit opgepakt moet worden. De
-  medewerker moet weten WIE terug te bellen: is de naam van de
-  klant nog niet gekend op dit punt in het gesprek (bv. een nieuwe klant die
-  meteen escaleert zonder ooit een afspraak te willen boeken), vraag dan EERST
-  naar de achternaam en laat die letter voor letter spellen — net zoals bij
-  een boeking — voor je escalate_to_human aanroept, en geef die mee als
-  customer_name. Is de naam al gekend (bestaande klant, of net via de intake
-  gekregen), vraag dan niet opnieuw. Dit verandert niets aan de regel dat je
-  een klantnaam nooit zelf hardop uitspreekt — je vráágt om de spelling en
-  geeft die enkel door aan de tool, je herhaalt of gebruikt de naam zelf niet
-  in wat je zegt.
+  medewerker vindt de klant via het telefoonnummer, dat is al gekend. Is de
+  naam ook al gekend (bestaande klant, of net via de intake gekregen), geef
+  die dan mee als customer_name — dit verandert niets aan de regel dat je een
+  klantnaam nooit zelf hardop uitspreekt. Is de naam niet gekend, laat
+  customer_name gewoon leeg — vraag er niet apart naar puur voor de
+  escalatie.
 - De medewerker die de escalatiemail leest, moet in één oogopslag weten
   WAAROVER het gaat — geef `reason` daarom NOOIT vaag door (bv. "klacht" of
   "vraag van klant" volstaat niet). Is uit wat de klant al zei niet meteen
@@ -274,13 +232,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "name": "book_appointment",
-        "description": (
-            "Boek een afspraak voor de klant. Bij een BESTAANDE klant: geef "
-            "confirmed_customer_name mee (de achternaam die de klant net zelf "
-            "gespeld heeft) — zelfde reden als bij annuleren/verplaatsen, ter "
-            "bescherming tegen een gedeeld telefoonnummer. Bij een NIEUWE "
-            "klant mag je dit weglaten, de achternaam komt dan al uit de intake."
-        ),
+        "description": "Boek een afspraak voor de klant. Identiteit komt uit het telefoonnummer, geen naam-bevestiging nodig.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -291,10 +243,6 @@ TOOLS: list[dict[str, Any]] = [
                     "description": "Korte omschrijving van de DIENST (bv. 'Kapbeurt'). De klantnaam wordt automatisch toegevoegd, zet die er zelf niet bij.",
                 },
                 "description": {"type": "string", "description": "Extra details, optioneel"},
-                "confirmed_customer_name": {
-                    "type": "string",
-                    "description": "Bij een bestaande klant: achternaam zoals de klant die zelf net gespeld heeft",
-                },
             },
             "required": ["start", "end", "summary"],
         },
@@ -308,35 +256,27 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "name": "cancel_appointment",
-        "description": (
-            "Annuleert een afspraak. Roep dit pas aan nadat de klant zijn/haar naam heeft "
-            "bevestigd — geef die naam mee als confirmed_customer_name."
-        ),
+        "description": "Annuleert een afspraak. Identiteit komt uit het telefoonnummer, geen naam-bevestiging nodig.",
         "parameters": {
             "type": "object",
             "properties": {
                 "booking_id": {"type": "string", "description": "booking_id uit find_upcoming_appointments"},
-                "confirmed_customer_name": {"type": "string", "description": "Achternaam zoals de klant die zelf net gespeld heeft"},
             },
-            "required": ["booking_id", "confirmed_customer_name"],
+            "required": ["booking_id"],
         },
     },
     {
         "type": "function",
         "name": "reschedule_appointment",
-        "description": (
-            "Verplaatst een afspraak naar een nieuw tijdstip. Roep dit pas aan nadat de klant "
-            "zijn/haar naam heeft bevestigd — geef die naam mee als confirmed_customer_name."
-        ),
+        "description": "Verplaatst een afspraak naar een nieuw tijdstip. Identiteit komt uit het telefoonnummer, geen naam-bevestiging nodig.",
         "parameters": {
             "type": "object",
             "properties": {
                 "booking_id": {"type": "string", "description": "booking_id uit find_upcoming_appointments"},
                 "new_start": {"type": "string", "description": "Nieuw startmoment, ISO 8601 datetime"},
                 "new_end": {"type": "string", "description": "Nieuw eindmoment, ISO 8601 datetime"},
-                "confirmed_customer_name": {"type": "string", "description": "Achternaam zoals de klant die zelf net gespeld heeft"},
             },
-            "required": ["booking_id", "new_start", "new_end", "confirmed_customer_name"],
+            "required": ["booking_id", "new_start", "new_end"],
         },
     },
     {
@@ -346,7 +286,7 @@ TOOLS: list[dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "name": {"type": "string", "description": "Achternaam, zoals de klant die zelf letter voor letter heeft gespeld"},
+                "name": {"type": "string", "description": "Naam van de klant, gewoon zoals uitgesproken"},
                 "email": {"type": "string"},
                 "notes": {"type": "string"},
             },
@@ -358,9 +298,8 @@ TOOLS: list[dict[str, Any]] = [
         "name": "escalate_to_human",
         "description": (
             "Geef het gesprek door aan een mens, bijvoorbeeld bij een klacht, complexe zaak of "
-            "onzekerheid. Is de naam van de klant nog niet gekend op dit punt, vraag die eerst "
-            "(achternaam, letter voor letter gespeld) en geef ze mee als customer_name — de "
-            "medewerker die terugbelt moet weten wie te bellen."
+            "onzekerheid. De medewerker vindt de klant via het telefoonnummer — geef customer_name "
+            "enkel mee als je die al kent, vraag er niet apart naar."
         ),
         "parameters": {
             "type": "object",
@@ -377,7 +316,7 @@ TOOLS: list[dict[str, Any]] = [
                 "reason": {"type": "string", "description": "Korte, concrete reden voor de escalatie"},
                 "customer_name": {
                     "type": "string",
-                    "description": "Achternaam zoals de klant die zelf net gespeld heeft, indien nog niet gekend. Leeg laten als de naam al gekend was.",
+                    "description": "Naam van de klant, enkel indien al gekend. Leeg laten indien niet gekend.",
                 },
             },
             "required": ["escalation_type", "reason"],
@@ -415,24 +354,8 @@ def build_voice_instructions(tenant: Any, customer: dict[str, Any] | None, is_ne
     )
 
 
-def _normalize_name(name: str) -> str:
-    # Vergelijking moet ongevoelig zijn voor hoe de naam precies genoteerd is:
-    # het model geeft confirmed_customer_name soms door als het losstaande,
-    # met liggende streepjes gespelde woord (bv. "P-E-E-T-E-R-S") in plaats
-    # van het samengevoegde woord ("Peeters") — allebei correct gespeld, maar
-    # een kale stringvergelijking zou dat dan toch als mismatch zien. Enkel
-    # alfanumerieke tekens, lowercase, telt mee voor de vergelijking.
-    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
-
-
-def _name_mismatch(stored_name: str, claimed_name: str) -> bool:
-    stored = _normalize_name(stored_name)
-    claimed = _normalize_name(claimed_name)
-    return not stored or stored != claimed
-
-
 async def execute_tool(
-    tenant: Any, pool: Any, phone_number: str, tool_name: str, tool_input: dict[str, Any], was_new_at_turn_start: bool = False
+    tenant: Any, pool: Any, phone_number: str, tool_name: str, tool_input: dict[str, Any]
 ) -> dict[str, Any]:
     """Voert een tool-call uit die de Realtime-sessie deed. Provider-onafhankelijk:
     realtime_client.py roept dit aan zodra OpenAI Realtime een function-call doet."""
@@ -459,18 +382,9 @@ async def execute_tool(
             ]
             return {"busy_periods": local_busy_periods, "fully_free": len(local_busy_periods) == 0}
         if tool_name == "book_appointment":
-            # Vers opgevraagd (kan intussen net aangemaakt zijn door create_customer
-            # in dezelfde beurt), maar de naam-check gebruikt was_new_at_turn_start:
-            # was deze klant al bekend TOEN het gesprek begon? Zo niet, dan komt de
-            # naam net uit de intake en hoeft ze niet opnieuw bevestigd te worden.
+            # Identiteit = telefoonnummer waarmee dit gesprek binnenkomt, geen
+            # aparte naam-bevestiging meer nodig (zie CLAUDE.md/agent-prompt).
             customer, _ = await find_or_flag_new(tenant, pool, phone_number)
-            if not was_new_at_turn_start and _name_mismatch(
-                (customer or {}).get("name", ""), tool_input.get("confirmed_customer_name", "")
-            ):
-                return {
-                    "error": "Naam komt niet overeen met de gekende klant. Kan dit niet automatisch verwerken — een medewerker moet de identiteit bevestigen.",
-                    "requires_human": True,
-                }
             start = _with_tz(datetime.fromisoformat(tool_input["start"]))
             end = _with_tz(datetime.fromisoformat(tool_input["end"]))
             # Nooit enkel op het model vertrouwen om eerst check_availability aan
@@ -488,7 +402,7 @@ async def execute_tool(
             # afhankelijk van of het model daaraan denkt — zo ziet de kapper in
             # zijn/haar eigen agenda-app altijd meteen wie er komt en hoe die te
             # bereiken is, zonder in verborgen metadata te moeten kijken.
-            customer_name = (customer or {}).get("name") or tool_input.get("confirmed_customer_name") or "Onbekende klant"
+            customer_name = (customer or {}).get("name") or "Onbekende klant"
             details = {
                 "summary": f"{tool_input['summary']} — {customer_name} ({phone_number})",
                 "description": tool_input.get("description", ""),
@@ -508,11 +422,6 @@ async def execute_tool(
             booking = next((b for b in bookings if b.get("booking_id") == tool_input["booking_id"]), None)
             if booking is None:
                 return {"error": "Deze afspraak is niet gevonden bij dit telefoonnummer — kan niet wijzigen."}
-            if _name_mismatch(booking.get("customer_name", ""), tool_input["confirmed_customer_name"]):
-                return {
-                    "error": "Naam komt niet overeen met de afspraak. Kan dit niet automatisch verwerken — een medewerker moet de identiteit bevestigen.",
-                    "requires_human": True,
-                }
             if tool_name == "cancel_appointment":
                 result = await adapter.cancel_booking(booking, customer)
             else:
@@ -523,10 +432,8 @@ async def execute_tool(
             # Nooit enkel op het model vertrouwen om create_customer alleen voor
             # ECHT nieuwe klanten aan te roepen — als er al een dossier bestaat
             # voor dit nummer, zou create_customer dat stil OVERSCHRIJVEN
-            # (local_create_customer doet ON CONFLICT DO UPDATE), wat de hele
-            # naam-mismatch-bescherming omzeilt: een beller die een andere naam
-            # opgeeft zou zo het bestaande dossier kunnen overschrijven vóór de
-            # mismatch-check ooit een kans krijgt iets te weigeren.
+            # (local_create_customer doet ON CONFLICT DO UPDATE): een beller zou
+            # zo het bestaande dossier (andere naam/details) kunnen overschrijven.
             existing_customer, _ = await find_or_flag_new(tenant, pool, phone_number)
             if existing_customer is not None:
                 return {

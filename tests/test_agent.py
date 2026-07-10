@@ -42,53 +42,15 @@ def test_build_voice_instructions_includes_niche_and_out_of_scope_guardrail(tena
 
 
 @pytest.mark.asyncio
-async def test_cancel_appointment_blocks_on_name_mismatch(tenant, fake_pool, monkeypatch):
-    """De kern van de veiligheidsmaatregel: een verkeerde naam mag nooit tot
-    een annulering leiden, zelfs niet als het telefoonnummer wel klopt
-    (bv. een gedeeld gezinsnummer)."""
+async def test_cancel_appointment_succeeds_based_on_phone_number_alone(tenant, fake_pool, monkeypatch):
+    """Identiteit komt uit het telefoonnummer waarmee het gesprek binnenkomt —
+    geen naam-bevestiging meer nodig om te annuleren."""
     fake_pool.connection.fetchrow.return_value = None
     adapter = _fake_adapter([{"booking_id": "abc", "customer_name": "Jan Peeters", "start": "x", "end": "y"}])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
 
     result = await agent.execute_tool(
-        tenant, fake_pool, "+32470000001", "cancel_appointment",
-        {"booking_id": "abc", "confirmed_customer_name": "Foute Naam"},
-    )
-
-    assert result["requires_human"] is True
-    adapter.cancel_booking.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_cancel_appointment_succeeds_on_name_match(tenant, fake_pool, monkeypatch):
-    fake_pool.connection.fetchrow.return_value = None
-    adapter = _fake_adapter([{"booking_id": "abc", "customer_name": "Jan Peeters", "start": "x", "end": "y"}])
-    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
-
-    result = await agent.execute_tool(
-        tenant, fake_pool, "+32470000001", "cancel_appointment",
-        {"booking_id": "abc", "confirmed_customer_name": "jan peeters"},  # andere hoofdlettering
-    )
-
-    assert result["status"] == "cancelled"
-    adapter.cancel_booking.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_cancel_appointment_succeeds_when_name_given_as_spelled_out_letters(tenant, fake_pool, monkeypatch):
-    """Regressie-test voor een echte bug (gevonden via live testen): het model
-    geeft confirmed_customer_name soms door als de losse, met streepjes
-    gespelde letters (bv. "P-E-E-T-E-R-S") in plaats van het samengevoegde
-    woord ("Peeters") — allebei correct gespeld, maar een kale
-    stringvergelijking zag dat toch als mismatch en escaleerde onterecht,
-    zelfs als de klant de juiste naam had gegeven."""
-    fake_pool.connection.fetchrow.return_value = None
-    adapter = _fake_adapter([{"booking_id": "abc", "customer_name": "Peeters", "start": "x", "end": "y"}])
-    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
-
-    result = await agent.execute_tool(
-        tenant, fake_pool, "+32470000001", "cancel_appointment",
-        {"booking_id": "abc", "confirmed_customer_name": "P-E-E-T-E-R-S"},
+        tenant, fake_pool, "+32470000001", "cancel_appointment", {"booking_id": "abc"},
     )
 
     assert result["status"] == "cancelled"
@@ -102,8 +64,7 @@ async def test_cancel_appointment_unknown_booking_id_is_rejected(tenant, fake_po
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
 
     result = await agent.execute_tool(
-        tenant, fake_pool, "+32470000001", "cancel_appointment",
-        {"booking_id": "onbestaand", "confirmed_customer_name": "Jan Peeters"},
+        tenant, fake_pool, "+32470000001", "cancel_appointment", {"booking_id": "onbestaand"},
     )
 
     assert "error" in result
@@ -111,11 +72,10 @@ async def test_cancel_appointment_unknown_booking_id_is_rejected(tenant, fake_po
 
 
 @pytest.mark.asyncio
-async def test_book_appointment_blocks_on_name_mismatch_for_existing_customer(tenant, fake_pool, monkeypatch):
-    """Zelfde bescherming als bij annuleren/verplaatsen, maar dan voor het
-    boeken zelf: bij een gedeeld telefoonnummer mag Lisa nooit op naam van de
-    verkeerde persoon boeken."""
-    adapter = _fake_adapter([])
+async def test_book_appointment_succeeds_for_existing_customer_without_name_confirmation(tenant, fake_pool, monkeypatch):
+    """Identiteit komt uit het telefoonnummer — boeken voor een bestaande
+    klant vereist geen aparte naam-bevestiging meer."""
+    adapter = _fake_adapter([], busy_periods=[])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
     monkeypatch.setattr(
         agent, "find_or_flag_new",
@@ -124,32 +84,7 @@ async def test_book_appointment_blocks_on_name_mismatch_for_existing_customer(te
 
     result = await agent.execute_tool(
         tenant, fake_pool, "+32470000001", "book_appointment",
-        {"start": "2026-07-07T09:00:00", "end": "2026-07-07T09:30:00", "summary": "Kapbeurt", "confirmed_customer_name": "Foute Naam"},
-        was_new_at_turn_start=False,
-    )
-
-    assert result["requires_human"] is True
-    adapter.book.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_book_appointment_skips_name_check_for_customer_created_this_turn(tenant, fake_pool, monkeypatch):
-    """Regressie-test: create_customer en book_appointment gebeuren vaak in
-    dezelfde beurt. Een verse lookup ziet die klant dan al als 'bestaand'
-    (want net aangemaakt) — maar de naam-check moet zich baseren op de status
-    bij het BEGIN van de beurt (was_new_at_turn_start), anders blokkeert Lisa
-    onterecht elke nieuwe klant die in één beurt boekt."""
-    adapter = _fake_adapter([])
-    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
-    monkeypatch.setattr(
-        agent, "find_or_flag_new",
-        AsyncMock(return_value=({"phone_number": "+32470000001", "name": "Jef Bakkers"}, False)),
-    )
-
-    result = await agent.execute_tool(
-        tenant, fake_pool, "+32470000001", "book_appointment",
         {"start": "2026-07-07T09:00:00", "end": "2026-07-07T09:30:00", "summary": "Kapbeurt"},
-        was_new_at_turn_start=True,
     )
 
     assert "error" not in result
@@ -168,7 +103,6 @@ async def test_book_appointment_refuses_when_slot_already_busy(tenant, fake_pool
     result = await agent.execute_tool(
         tenant, fake_pool, "+32470000001", "book_appointment",
         {"start": "2026-07-07T13:00:00", "end": "2026-07-07T13:30:00", "summary": "Kapbeurt"},
-        was_new_at_turn_start=True,
     )
 
     assert "error" in result
@@ -184,7 +118,6 @@ async def test_book_appointment_proceeds_when_slot_is_free(tenant, fake_pool, mo
     result = await agent.execute_tool(
         tenant, fake_pool, "+32470000001", "book_appointment",
         {"start": "2026-07-07T13:00:00", "end": "2026-07-07T13:30:00", "summary": "Kapbeurt"},
-        was_new_at_turn_start=True,
     )
 
     assert "error" not in result
@@ -219,9 +152,7 @@ async def test_check_availability_converts_utc_busy_periods_to_local_time(tenant
 async def test_create_customer_refuses_when_dossier_already_exists(tenant, fake_pool, monkeypatch):
     """Regressie-test voor een echte bug: create_customer gebruikt ON CONFLICT
     DO UPDATE, dus zonder deze guard zou het model een BESTAAND dossier stil
-    kunnen overschrijven door gewoon een andere naam op te geven — waarna de
-    naam-mismatch-check niets meer detecteert (want de database staat dan al
-    op de nieuwe, foute naam voor de check ooit plaatsvindt)."""
+    kunnen overschrijven door gewoon een andere naam op te geven."""
     adapter = _fake_adapter([])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
     monkeypatch.setattr(
