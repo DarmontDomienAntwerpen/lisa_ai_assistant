@@ -189,7 +189,7 @@ async def get_tenant_usage_summary(pool: asyncpg.Pool, tenant_id: str, since: Op
                 COALESCE(SUM(input_tokens), 0) AS total_input_tokens,
                 COALESCE(SUM(output_tokens), 0) AS total_output_tokens,
                 COALESCE(SUM(cost_usd), 0) AS total_cost_usd,
-                COALESCE(SUM(CASE WHEN escalated THEN 1 ELSE 0 END), 0) AS escalations
+                COUNT(DISTINCT CASE WHEN escalated THEN call_id END) AS escalations
             FROM usage_log WHERE tenant_id = $1 AND ($2::timestamptz IS NULL OR created_at >= $2)
             """,
             tenant_id,
