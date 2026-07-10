@@ -148,6 +148,7 @@ async def index() -> str:
     <textarea name="system_prompt_extra" placeholder="Wees warm en informeel. Diensten: knipbeurt, kleuring, wassen."></textarea>
     <button type="submit" id="createBtn">Klaar — ga naar agenda-koppeling</button>
   </form>
+  <p style="margin-top:1rem;"><a href="/edit">Bestaande klant bewerken →</a></p>
   <div class="status" id="status"></div>
 </div>
 <script>
@@ -332,6 +333,113 @@ async def select_calendar(choice: CalendarChoice) -> dict:
     await tenants.upsert_tenant(pool, tenant)
 
     return {"business_name": tenant.business_name, "calendar_id": choice.calendar_id}
+
+
+class TenantEditForm(BaseModel):
+    niche: str
+    system_prompt_extra: str = ""
+    escalation_contact: str = ""
+    escalation_email: str = ""
+
+
+@app.get("/edit", response_class=HTMLResponse)
+async def edit_index() -> str:
+    """Kies een bestaande klant om enkel niche/system_prompt_extra/escalatie
+    bij te werken — raakt calendar_type/calendar_config NOOIT aan, in
+    tegenstelling tot het opnieuw draaien van de onboarding-flow."""
+    pool = await get_pool()
+    await tenants.init_schema(pool)
+    all_tenants = await tenants.list_tenants(pool)
+    options = "".join(
+        f'<option value="{t.client_id}">{t.business_name} ({t.niche})</option>' for t in all_tenants
+    )
+    body = f"""<h1>Bestaande klant bewerken</h1>
+    <p>Enkel niche, toon/info en escalatiegegevens — de agenda-koppeling blijft ongewijzigd.</p>
+    <select id="tenantSelect" style="width:100%; padding:0.6rem; border-radius:8px; border:1px solid #d1d5db; font-size:0.95rem;">
+      {options or '<option disabled>Nog geen klanten</option>'}
+    </select>
+    <button onclick="loadTenant()">Laden</button>
+    <div id="editForm"></div>
+    <p style="margin-top:1rem;"><a href="/">← Nieuwe klant onboarden</a></p>"""
+    return f"""<!doctype html>
+<html lang="nl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lisa — klant bewerken</title><style>{_PAGE_STYLE}</style></head>
+<body><div class="card" id="app">
+  <div class="db-banner">✓ Verbonden met PRODUCTIE-database (Railway)</div>
+  {body}
+</div>
+<script>
+async function loadTenant() {{
+  const clientId = document.getElementById('tenantSelect').value;
+  const res = await fetch('/tenant/' + clientId);
+  const t = await res.json();
+  document.getElementById('editForm').innerHTML = `
+    <form id="editTenantForm">
+      <label>Niche</label>
+      <input name="niche" required value="${{t.niche}}">
+      <label>Toon / begroeting / diensten (system_prompt_extra)</label>
+      <textarea name="system_prompt_extra">${{t.system_prompt_extra}}</textarea>
+      <label>Escalatiecontact</label>
+      <input name="escalation_contact" value="${{t.escalation_contact}}">
+      <label>Escalatie-e-mail</label>
+      <input name="escalation_email" value="${{t.escalation_email}}">
+      <button type="submit">Opslaan</button>
+    </form>
+    <div class="status" id="editStatus"></div>
+  `;
+  document.getElementById('editTenantForm').addEventListener('submit', async (e) => {{
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(e.target).entries());
+    const status = document.getElementById('editStatus');
+    status.textContent = 'Bezig...';
+    try {{
+      const res = await fetch('/tenant/' + clientId, {{
+        method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify(data),
+      }});
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.detail || 'onbekende fout');
+      status.textContent = 'Opgeslagen — agenda-koppeling ongewijzigd.';
+      status.className = 'status';
+    }} catch (err) {{
+      status.textContent = 'Fout: ' + err.message;
+      status.className = 'status error';
+    }}
+  }});
+}}
+</script>
+</body></html>"""
+
+
+@app.get("/tenant/{client_id}")
+async def get_tenant_fields(client_id: str) -> dict:
+    pool = await get_pool()
+    tenant = await tenants.get_tenant_by_client_id(pool, client_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Onbekende klant")
+    return {
+        "niche": tenant.niche,
+        "system_prompt_extra": tenant.system_prompt_extra,
+        "escalation_contact": tenant.escalation_contact,
+        "escalation_email": tenant.escalation_email,
+    }
+
+
+@app.post("/tenant/{client_id}")
+async def update_tenant_fields(client_id: str, form: TenantEditForm) -> dict:
+    pool = await get_pool()
+    tenant = await tenants.get_tenant_by_client_id(pool, client_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Onbekende klant")
+
+    # Enkel deze velden aanpassen — calendar_type/calendar_config/twilio_number/
+    # business_name blijven exact zoals ze waren.
+    tenant.niche = form.niche
+    tenant.system_prompt_extra = form.system_prompt_extra
+    tenant.escalation_contact = form.escalation_contact
+    tenant.escalation_email = form.escalation_email
+    await tenants.upsert_tenant(pool, tenant)
+
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":
