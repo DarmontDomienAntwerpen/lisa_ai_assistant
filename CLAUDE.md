@@ -32,8 +32,9 @@ Twilio Media Stream → audio-in → OpenAI Realtime API
 `app/agent.py` blijft bestaan als de **niche-onafhankelijke, provider-onafhankelijke
 kern**: tool-definities (`TOOLS`, in OpenAI function-calling-vorm), de
 system-instructies (`build_voice_instructions`), en de eigenlijke tool-uitvoering
-(`execute_tool` — agenda checken/boeken, klant opzoeken/aanmaken, naam-bevestiging
-bij bestaande klant). Die business-logica is wat hier getest en bewaakt wordt, niet
+(`execute_tool` — agenda checken/boeken, klant opzoeken/aanmaken; identiteit komt
+uit het telefoonnummer, geen aparte naam-bevestiging). Die business-logica is wat
+hier getest en bewaakt wordt, niet
 de keuze van LLM-provider. `app/realtime_client.py` is de dunne WebSocket-laag naar
 OpenAI's Realtime API (sessie opzetten, function-calls doorsturen naar
 `agent.execute_tool`, transcript/usage capteren) — gedeeld door zowel

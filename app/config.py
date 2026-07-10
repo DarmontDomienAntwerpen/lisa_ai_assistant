@@ -31,7 +31,8 @@ DATABASE_URL = os.environ.get("DATABASE_URL", "")
 CONVERSATION_ENCRYPTION_KEY = os.environ.get("CONVERSATION_ENCRYPTION_KEY", "")
 
 # --- App ---
-PORT = int(os.environ.get("PORT", "8000"))
+# PORT wordt NIET hier gelezen: Procfile/Railway geven $PORT rechtstreeks aan
+# uvicorn's --port mee op shell-niveau, dit bestand heeft het nooit nodig.
 CONVERSATION_HISTORY_LIMIT = int(os.environ.get("CONVERSATION_HISTORY_LIMIT", "20"))
 # GDPR: expliciete retentietermijn voor gespreksdata
 CONVERSATION_RETENTION_DAYS = int(os.environ.get("CONVERSATION_RETENTION_DAYS", "180"))

@@ -56,7 +56,7 @@ async def send_escalation_email(
         "Een klant had Lisa aan de lijn en moet door een medewerker opgevolgd worden.\n\n"
         f"Zaak: {tenant.business_name}\n"
         f"Klantnummer: {caller_number}\n"
-        f"Naam (gespeld door de klant): {customer_name or 'nog niet gekend'}\n"
+        f"Naam: {customer_name or 'nog niet gekend'}\n"
         f"Type escalatie: {type_label}\n"
         f"Waarom: {reason or 'niet gespecificeerd'}\n"
         f"Tijdstip: {now}\n\n"

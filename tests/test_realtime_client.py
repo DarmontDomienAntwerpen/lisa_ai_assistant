@@ -69,10 +69,10 @@ async def test_handle_function_call_escalates_and_sends_output(tenant, fake_pool
 
 @pytest.mark.asyncio
 async def test_handle_function_call_escalates_with_customer_name(tenant, fake_pool, monkeypatch):
-    """Regressie-test: als Lisa de naam al gespeld en meegegeven heeft (bv.
-    een nieuwe klant die meteen escaleert zonder ooit een afspraak te
-    boeken), moet die naam doorstromen naar het escalated-event — anders
-    weet de medewerker in de escalatiemail niet wie terug te bellen."""
+    """Regressie-test: als Lisa de naam al kent en meegeeft (bv. een nieuwe
+    klant die meteen escaleert zonder ooit een afspraak te boeken), moet die
+    naam doorstromen naar het escalated-event — anders weet de medewerker in
+    de escalatiemail niet wie terug te bellen."""
     monkeypatch.setattr(agent, "get_integration", lambda t, p: _fake_adapter())
     conv = RealtimeConversation(tenant, fake_pool, "+32470000001", "voice", audio=True)
     conv._ws = FakeWS()

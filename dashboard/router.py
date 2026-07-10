@@ -93,6 +93,11 @@ async def overview(_: None = Depends(_require_auth)) -> str:
     all_tenants = await tenants.list_tenants(pool)
     since = datetime.now(timezone.utc) - timedelta(days=30)
 
+    # Vaste, gedeelde infra (Railway + Postgres) gelijk verdeeld over alle
+    # actieve tenants — een ruwe maar redelijke verdeelsleutel zolang er geen
+    # gewicht per klant (bv. call-volume) voor gebruikt wordt.
+    fixed_cost_per_tenant_eur = FIXED_MONTHLY_INFRA_COST_EUR / len(all_tenants) if all_tenants else 0.0
+
     rows = []
     total_invoice_eur = 0.0
     total_variable_cost_eur = 0.0
@@ -106,6 +111,8 @@ async def overview(_: None = Depends(_require_auth)) -> str:
         ai_cost_usd = float(summary["total_cost_usd"])
         twilio_cost_usd = float(summary["total_twilio_cost_usd"]) + TWILIO_MONTHLY_NUMBER_USD
         variable_cost_eur = (ai_cost_usd + twilio_cost_usd) * USD_TO_EUR_RATE
+        total_cost_eur_row = variable_cost_eur + fixed_cost_per_tenant_eur
+        margin_eur_row = invoice - total_cost_eur_row
 
         total_invoice_eur += invoice
         total_variable_cost_eur += variable_cost_eur
@@ -116,8 +123,9 @@ async def overview(_: None = Depends(_require_auth)) -> str:
             <td>{summary['call_count']}</td>
             <td>${ai_cost_usd:.2f}</td>
             <td>${twilio_cost_usd:.2f}</td>
-            <td>€{variable_cost_eur:.2f}</td>
+            <td>€{total_cost_eur_row:.2f}</td>
             <td>€{invoice:.2f}</td>
+            <td>€{margin_eur_row:.2f}</td>
             <td>{summary['escalations']}</td>
             <td class="muted">{last_call}</td>
         </tr>""")
@@ -127,16 +135,18 @@ async def overview(_: None = Depends(_require_auth)) -> str:
 
     body = f"""<h1>Lisa — dashboard</h1>
     <p class="muted">Laatste 30 dagen, per tenant. "AI-kost" en "Twilio-kost" zijn
-    gemeten (OpenAI/Twilio-tarieven, incl. nummerhuur), "Totale kost" rekent dat
-    om naar EUR (koers {USD_TO_EUR_RATE:.2f}). "Aanbevolen factuur" is een
+    gemeten (OpenAI/Twilio-tarieven, incl. nummerhuur). "Totale kost" is dat
+    omgerekend naar EUR (koers {USD_TO_EUR_RATE:.2f}) PLUS een gelijk verdeeld
+    aandeel (€{fixed_cost_per_tenant_eur:.2f}) van de vaste Railway/Postgres-kost
+    over de {len(all_tenants)} tenant(s). "Aanbevolen factuur" is een
     schatting (basis €{PRICING_BASE_EUR:.0f}, {PRICING_INCLUDED_CALLS} calls inbegrepen,
     €{PRICING_OVERAGE_EUR:.2f}/call daarboven) — geen echte facturatie-integratie.</p>
     <table>
-      <tr><th>Zaak</th><th>Niche</th><th>Calls</th><th>AI-kost</th><th>Twilio-kost</th><th>Totale kost</th><th>Aanbevolen factuur</th><th>Escalaties</th><th>Laatste call</th></tr>
-      {''.join(rows) or '<tr><td colspan="9" class="muted">Nog geen tenants.</td></tr>'}
+      <tr><th>Zaak</th><th>Niche</th><th>Calls</th><th>AI-kost</th><th>Twilio-kost</th><th>Totale kost</th><th>Aanbevolen factuur</th><th>Marge</th><th>Escalaties</th><th>Laatste call</th></tr>
+      {''.join(rows) or '<tr><td colspan="10" class="muted">Nog geen tenants.</td></tr>'}
     </table>
     <p class="muted" style="margin-top:1rem;">
-      Vaste, gedeelde kost (Railway + Postgres, niet per klant op te splitsen):
+      Vaste, gedeelde kost (Railway + Postgres, hierboven al verdeeld over de tenants):
       €{FIXED_MONTHLY_INFRA_COST_EUR:.2f}/maand (zie FIXED_MONTHLY_INFRA_COST_EUR).<br>
       Totaal deze 30 dagen: €{total_variable_cost_eur:.2f} variabel (AI + Twilio, alle klanten)
       + €{FIXED_MONTHLY_INFRA_COST_EUR:.2f} vast = <b>€{total_cost_eur:.2f}</b> kost,
