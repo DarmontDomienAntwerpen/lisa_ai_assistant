@@ -62,9 +62,10 @@ class RealtimeConversation:
         self._current_output_item_id: Optional[str] = None
         self._current_output_audio_started_at: Optional[float] = None
         self._ws: Optional[Any] = None
+        self.call_id: Optional[int] = None
 
     async def connect(self) -> None:
-        await usage_log.log_call_start(self.pool, self.tenant.client_id, self.phone_number, self.channel)
+        self.call_id = await usage_log.log_call_start(self.pool, self.tenant.client_id, self.phone_number, self.channel)
         customer, is_new = await find_or_flag_new(self.tenant, self.pool, self.phone_number)
         self._was_new_at_start = is_new
         instructions = agent.build_voice_instructions(self.tenant, customer, is_new)
@@ -190,6 +191,7 @@ class RealtimeConversation:
                     usage.get("output_tokens", 0),
                     self.escalated,
                     cached_input_tokens=cached_input_tokens,
+                    call_id=self.call_id,
                 )
                 # Eén response kan MEERDERE function-calls bevatten (parallelle
                 # tool-calls). Pas hier, na response.done, één response.create
@@ -260,6 +262,7 @@ class RealtimeConversation:
                 logger.info("Gesprek geëscaleerd voor tenant %s / %s", self.tenant.client_id, self.phone_number)
                 tool_event = {
                     "type": "escalated",
+                    "escalation_type": tool_input.get("escalation_type", "andere") if name == "escalate_to_human" else "andere",
                     "reason": tool_input.get("reason", ""),
                     "customer_name": tool_input.get("customer_name", "") if name == "escalate_to_human" else "",
                 }

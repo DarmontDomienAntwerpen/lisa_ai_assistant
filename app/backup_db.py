@@ -1,6 +1,8 @@
 """Dagelijkse database-backup: dumpt alle tabellen als JSON en mailt dat als
-bijlage naar Darmont Digital zelf. Puur Python (geen afhankelijkheid van een
-`pg_dump`-binary die mogelijk niet aanwezig is in de Railway-runtime).
+bijlage naar Darmont Digital zelf, via de Gmail API (app/gmail_sender.py) —
+niet SMTP, want Railway blokkeert uitgaande SMTP-poorten op het Trial/Hobby-
+plan. Puur Python (geen afhankelijkheid van een `pg_dump`-binary die mogelijk
+niet aanwezig is in de Railway-runtime).
 
 Beschermt tegen schijf-/volume-defect of per-ongeluk-verwijderen van de
 Postgres-service — een gewone process-crash heeft dit NIET nodig (Postgres
@@ -15,7 +17,6 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from email.message import EmailMessage
 
 TABLES = ["tenants", "customers", "conversations", "usage_log", "calls"]
 
@@ -38,17 +39,10 @@ async def _dump_all_tables(pool) -> dict:
 
 
 async def _run_backup() -> None:
-    import smtplib
+    import asyncio
 
-    from app.config import (
-        SMTP_FROM_ADDRESS,
-        SMTP_HOST,
-        SMTP_PASSWORD,
-        SMTP_PORT,
-        SMTP_USERNAME,
-        close_pool,
-        get_pool,
-    )
+    from app import gmail_sender
+    from app.config import close_pool, get_pool
 
     pool = await get_pool()
     dump = await _dump_all_tables(pool)
@@ -59,26 +53,19 @@ async def _run_backup() -> None:
     filename = f"lisa-backup-{now.strftime('%Y-%m-%d')}.json"
     payload = json.dumps(dump, default=_json_default, ensure_ascii=False).encode("utf-8")
 
-    if not (SMTP_HOST and SMTP_USERNAME and SMTP_PASSWORD and SMTP_FROM_ADDRESS):
-        print(f"[backup] SMTP niet geconfigureerd — dump NIET verstuurd. Rijen per tabel: {row_counts}")
+    if not gmail_sender.is_configured():
+        print(f"[backup] Gmail-verzendaccount niet geconfigureerd — dump NIET verstuurd. Rijen per tabel: {row_counts}")
         return
 
-    message = EmailMessage()
-    message["Subject"] = f"Lisa: dagelijkse database-backup — {now.strftime('%Y-%m-%d')}"
-    message["From"] = SMTP_FROM_ADDRESS
-    message["To"] = SMTP_FROM_ADDRESS  # naar jezelf — geen apart backup-mailadres nodig
-    message.set_content(f"Automatische backup, rijen per tabel: {row_counts}")
-    message.add_attachment(payload, maintype="application", subtype="json", filename=filename)
+    from app.config import GMAIL_SENDER_ADDRESS
 
-    def _send() -> None:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as smtp:
-            smtp.starttls()
-            smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-            smtp.send_message(message)
-
-    import asyncio
-
-    await asyncio.to_thread(_send)
+    await asyncio.to_thread(
+        gmail_sender.send_email,
+        GMAIL_SENDER_ADDRESS,  # naar jezelf — geen apart backup-mailadres nodig
+        f"Lisa: dagelijkse database-backup — {now.strftime('%Y-%m-%d')}",
+        f"Automatische backup, rijen per tabel: {row_counts}",
+        (payload, "application", "json", filename),
+    )
     print(f"[backup] verstuurd, rijen per tabel: {row_counts}")
 
 

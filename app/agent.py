@@ -217,7 +217,10 @@ Je taak:
   het team neemt de wens over en bevestigt de afspraak nog persoonlijk.
 - Roep escalate_to_human aan bij klachten, complexe zaken, of wanneer je
   onzeker bent — en laat de klant weten dat een medewerker terugbelt of
-  overneemt. De medewerker moet weten WIE terug te bellen: is de naam van de
+  overneemt. Kies bij elke escalatie ook het juiste escalation_type (klacht /
+  dringende situatie / vraag buiten kennis / andere) — dat helpt de
+  medewerker meteen inschatten hoe snel en hoe dit opgepakt moet worden. De
+  medewerker moet weten WIE terug te bellen: is de naam van de
   klant nog niet gekend op dit punt in het gesprek (bv. een nieuwe klant die
   meteen escaleert zonder ooit een afspraak te willen boeken), vraag dan EERST
   naar de achternaam en laat die letter voor letter spellen — net zoals bij
@@ -357,13 +360,22 @@ TOOLS: list[dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "reason": {"type": "string", "description": "Korte reden voor de escalatie"},
+                "escalation_type": {
+                    "type": "string",
+                    "enum": ["klacht", "dringende situatie", "vraag buiten kennis", "andere"],
+                    "description": (
+                        "Type escalatie: 'klacht' (ontevreden klant), 'dringende situatie' "
+                        "(kan niet wachten tot later), 'vraag buiten kennis' (info die je niet "
+                        "hebt), 'andere' als geen van deze past."
+                    ),
+                },
+                "reason": {"type": "string", "description": "Korte, concrete reden voor de escalatie"},
                 "customer_name": {
                     "type": "string",
                     "description": "Achternaam zoals de klant die zelf net gespeld heeft, indien nog niet gekend. Leeg laten als de naam al gekend was.",
                 },
             },
-            "required": ["reason"],
+            "required": ["escalation_type", "reason"],
         },
     },
 ]
@@ -522,6 +534,7 @@ async def execute_tool(
         if tool_name == "escalate_to_human":
             return {
                 "status": "escalated",
+                "escalation_type": tool_input.get("escalation_type", "andere"),
                 "reason": tool_input.get("reason", ""),
                 "customer_name": tool_input.get("customer_name", ""),
                 "escalation_contact": tenant.escalation_contact,

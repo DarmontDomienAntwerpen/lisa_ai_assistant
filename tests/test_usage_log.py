@@ -32,13 +32,18 @@ def test_calculate_cost_usd_cached_input_is_much_cheaper():
 
 
 @pytest.mark.asyncio
-async def test_log_call_start_inserts_into_calls_table(fake_pool):
-    await log_call_start(fake_pool, "kapper_devries", "+32470000001", "voice")
-    args = fake_pool.connection.execute.call_args.args
+async def test_log_call_start_inserts_into_calls_table_and_returns_id(fake_pool):
+    fake_pool.connection.fetchval.return_value = 42
+
+    call_id = await log_call_start(fake_pool, "kapper_devries", "+32470000001", "voice")
+
+    args = fake_pool.connection.fetchval.call_args.args
     assert "INSERT INTO calls" in args[0]
+    assert "RETURNING id" in args[0]
     assert args[1] == "kapper_devries"
     assert args[2] == "+32470000001"
     assert args[3] == "voice"
+    assert call_id == 42
 
 
 @pytest.mark.asyncio
@@ -48,7 +53,7 @@ async def test_get_tenant_usage_summary_merges_usage_and_call_stats(fake_pool):
     beide nodig (call_count komt uit calls, niet uit usage_log)."""
     fake_pool.connection.fetchrow.side_effect = [
         {"conversation_turns": 5, "total_input_tokens": 100, "total_output_tokens": 200, "total_cost_usd": 0.05, "escalations": 1},
-        {"call_count": 2, "last_call_at": None},
+        {"call_count": 2, "last_call_at": None, "total_duration_seconds": 120},
     ]
     summary = await get_tenant_usage_summary(fake_pool, "kapper_devries")
     assert summary["conversation_turns"] == 5

@@ -54,6 +54,8 @@ def test_overview_shows_tenant_stats(client, monkeypatch, tenant):
             "escalations": 1,
             "call_count": 3,
             "last_call_at": datetime(2026, 7, 7, 10, 0, tzinfo=timezone.utc),
+            "total_duration_seconds": 600,
+            "total_twilio_cost_usd": 0.16,
         }),
     )
 

@@ -129,6 +129,12 @@ lisa/
 │   ├── conversation_store.py     # gesprekshistorie per (tenant, telefoonnummer). Ook GDPR-
 │   │                             #   purge-entrypoint: `python -m app.conversation_store`
 │   ├── usage_log.py              # tokens, kosten, kanaal, escalaties, calls (aparte call-teller)
+│   ├── gmail_sender.py           # generieke e-mailverzending via de Gmail API (HTTPS) — niet
+│   │                             #   SMTP, want Railway blokkeert uitgaande SMTP-poorten op
+│   │                             #   Trial/Hobby. Eén globaal Darmont Digital-verzendaccount,
+│   │                             #   gedeeld door alle tenants (zie onboarding/gmail_sender_setup.py)
+│   ├── escalation_email.py       # bouwt de escalatiemail-inhoud, verstuurt via gmail_sender
+│   ├── backup_db.py              # dagelijkse JSON-dump van alle tabellen, verstuurd via gmail_sender
 │   └── config.py                 # env vars, model-keuzes
 ├── dashboard/
 │   └── router.py                 # intern, read-only: /dashboard — per tenant calls/kosten/
@@ -140,8 +146,12 @@ lisa/
 │   │                             #   login), alles in één ononderbroken flow. Schrijft altijd
 │   │                             #   naar de productie-database (haalt DATABASE_PUBLIC_URL op
 │   │                             #   via de railway CLI, negeert .env)
-│   └── google_oauth_setup.py     # eenmalige OAuth-setup voor Domiens EIGEN testagenda (dev) —
-│                                 #   los van klant-onboarding, voedt enkel de devtools
+│   ├── google_oauth_setup.py     # eenmalige OAuth-setup voor Domiens EIGEN testagenda (dev) —
+│   │                             #   los van klant-onboarding, voedt enkel de devtools
+│   └── gmail_sender_setup.py     # eenmalige, GLOBALE OAuth-setup voor het Darmont Digital
+│                                 #   Gmail-verzendaccount (escalatiemails + backups). Los van
+│                                 #   de agenda-koppeling per klant — nooit per klant herhalen,
+│                                 #   nieuwe klanten vullen enkel hun escalation_email in.
 ├── devtools/                    # geen productiecode: praten in tekst/via microfoon met exact
 │   ├── dev_chat.py                #   dezelfde RealtimeConversation als een echte oproep
 │   ├── dev_chat_ui.py

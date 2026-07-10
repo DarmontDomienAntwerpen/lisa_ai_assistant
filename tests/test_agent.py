@@ -262,10 +262,11 @@ async def test_escalate_to_human_returns_escalation_contact(tenant, fake_pool, m
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
 
     result = await agent.execute_tool(
-        tenant, fake_pool, "+32470000001", "escalate_to_human", {"reason": "klacht"}
+        tenant, fake_pool, "+32470000001", "escalate_to_human", {"escalation_type": "klacht", "reason": "klacht"}
     )
 
     assert result["status"] == "escalated"
+    assert result["escalation_type"] == "klacht"
     assert result["escalation_contact"] == tenant.escalation_contact
 
 

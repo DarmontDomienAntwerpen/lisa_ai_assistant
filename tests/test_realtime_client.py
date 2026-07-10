@@ -49,10 +49,14 @@ async def test_handle_function_call_escalates_and_sends_output(tenant, fake_pool
     conv._ws = FakeWS()
 
     event = await conv._handle_function_call(
-        {"call_id": "c1", "name": "escalate_to_human", "arguments": json.dumps({"reason": "klacht"})}
+        {
+            "call_id": "c1",
+            "name": "escalate_to_human",
+            "arguments": json.dumps({"escalation_type": "klacht", "reason": "klacht"}),
+        }
     )
 
-    assert event == {"type": "escalated", "reason": "klacht", "customer_name": ""}
+    assert event == {"type": "escalated", "escalation_type": "klacht", "reason": "klacht", "customer_name": ""}
     assert conv.escalated is True
     # Geen response.create hier — dat gebeurt centraal op response.done (zie
     # test_events_sends_exactly_one_response_create_for_multiple_tool_calls),
@@ -76,10 +80,15 @@ async def test_handle_function_call_escalates_with_customer_name(tenant, fake_po
     event = await conv._handle_function_call({
         "call_id": "c1",
         "name": "escalate_to_human",
-        "arguments": json.dumps({"reason": "klacht", "customer_name": "Peeters"}),
+        "arguments": json.dumps({"escalation_type": "klacht", "reason": "klacht", "customer_name": "Peeters"}),
     })
 
-    assert event == {"type": "escalated", "reason": "klacht", "customer_name": "Peeters"}
+    assert event == {
+        "type": "escalated",
+        "escalation_type": "klacht",
+        "reason": "klacht",
+        "customer_name": "Peeters",
+    }
 
 
 @pytest.mark.asyncio

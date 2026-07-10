@@ -49,13 +49,34 @@ PRICING_BASE_EUR = float(os.environ.get("PRICING_BASE_EUR", "149"))
 PRICING_INCLUDED_CALLS = int(os.environ.get("PRICING_INCLUDED_CALLS", "150"))
 PRICING_OVERAGE_EUR = float(os.environ.get("PRICING_OVERAGE_EUR", "0.75"))
 
-# --- E-mail (escalatienotificaties naar de zaakeigenaar) — generieke SMTP,
-# werkt met eender welke provider (Gmail, Zoho, een eigen domein, ...) ---
-SMTP_HOST = os.environ.get("SMTP_HOST", "")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-SMTP_FROM_ADDRESS = os.environ.get("SMTP_FROM_ADDRESS", "")
+# --- Twilio (telefoniekost per klant) — schatting op basis van Twilio's
+# gepubliceerde tarieven (twilio.com/en-us/voice/pricing/be, geverifieerd juli
+# 2026): inbound naar een Belgisch "mobile"-type nummer $0.0113/min + Media
+# Streams $0.0044/min = $0.0157/min gecombineerd, plus $1.25/maand huur per
+# nummer. Pas aan als je effectieve Twilio-tarief afwijkt (ander nummertype,
+# volumekorting, wisselkoers). ---
+TWILIO_PER_MINUTE_USD = float(os.environ.get("TWILIO_PER_MINUTE_USD", "0.0157"))
+TWILIO_MONTHLY_NUMBER_USD = float(os.environ.get("TWILIO_MONTHLY_NUMBER_USD", "1.25"))
+
+# Ruwe, vaste omrekenkoers USD->EUR — enkel voor het dashboard-totaaloverzicht
+# (om USD-gefactureerde OpenAI/Twilio-kost en EUR-vaste kosten samen te tellen
+# tot één bedrag). Geen live wisselkoers-integratie nodig voor een schatting.
+USD_TO_EUR_RATE = float(os.environ.get("USD_TO_EUR_RATE", "0.92"))
+
+# --- Vaste, gedeelde infrastructuurkost (NIET per klant op te splitsen —
+# geldt voor het hele systeem, ongeacht aantal tenants): Railway-hosting
+# (web-service + Postgres-add-on, meestal samen op één factuur) + eventuele
+# andere vaste maandkosten. Vul dit in met wat je Railway-factuur effectief
+# toont — enkel gebruikt voor het dashboard-totaaloverzicht (marge-check),
+# nooit voor de factuur van een individuele klant. ---
+FIXED_MONTHLY_INFRA_COST_EUR = float(os.environ.get("FIXED_MONTHLY_INFRA_COST_EUR", "5.0"))
+
+# --- E-mail (escalatienotificaties + dagelijkse backup) — Gmail API (HTTPS),
+# NIET SMTP: Railway blokkeert uitgaande SMTP-poorten op Trial/Hobby. Eén
+# globaal Darmont Digital-verzendaccount, gedeeld door alle tenants — zie
+# onboarding/gmail_sender_setup.py en app/gmail_sender.py. ---
+GMAIL_SENDER_OAUTH_CREDENTIALS = os.environ.get("GMAIL_SENDER_OAUTH_CREDENTIALS", "")
+GMAIL_SENDER_ADDRESS = os.environ.get("GMAIL_SENDER_ADDRESS", "")
 
 _pool: Optional[asyncpg.Pool] = None
 

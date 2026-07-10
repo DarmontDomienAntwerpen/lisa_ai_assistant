@@ -14,7 +14,7 @@ from typing import Optional
 
 from fastapi import WebSocket
 
-from app import customer_lookup, tenants
+from app import customer_lookup, tenants, usage_log
 from app.config import get_pool
 from app.escalation_email import send_escalation_email
 from app.realtime_client import RealtimeConversation
@@ -22,14 +22,16 @@ from app.realtime_client import RealtimeConversation
 logger = logging.getLogger("lisa")
 
 
-async def _notify_escalation(tenant: tenants.Tenant, pool, caller_number: str, customer_name: str, reason: str) -> None:
+async def _notify_escalation(
+    tenant: tenants.Tenant, pool, caller_number: str, customer_name: str, escalation_type: str, reason: str
+) -> None:
     if not customer_name:
         # Lisa vraagt intussen zelf om de naam voor ze escaleert als die nog
         # niet gekend was, maar val terug op een lookup voor bestaande
         # klanten waarvan de naam al in het systeem stond.
         customer, _ = await customer_lookup.find_or_flag_new(tenant, pool, caller_number)
         customer_name = (customer or {}).get("name", "")
-    await send_escalation_email(tenant, caller_number, customer_name, reason)
+    await send_escalation_email(tenant, caller_number, customer_name, escalation_type, reason)
 
 
 async def run_media_stream(websocket: WebSocket) -> None:
@@ -64,7 +66,14 @@ async def run_media_stream(websocket: WebSocket) -> None:
                 # het gesprek met Lisa loopt gewoon door.
                 assert tenant is not None
                 asyncio.create_task(
-                    _notify_escalation(tenant, pool, caller_number, event.get("customer_name", ""), event.get("reason", ""))
+                    _notify_escalation(
+                        tenant,
+                        pool,
+                        caller_number,
+                        event.get("customer_name", ""),
+                        event.get("escalation_type", "andere"),
+                        event.get("reason", ""),
+                    )
                 )
 
     try:
@@ -100,3 +109,5 @@ async def run_media_stream(websocket: WebSocket) -> None:
             relay_task.cancel()
         if conversation is not None:
             await conversation.close()
+            # Voedt de Twilio-kostenschatting (duur × tarief) in het dashboard.
+            await usage_log.log_call_end(pool, conversation.call_id)
