@@ -119,6 +119,16 @@ async def run_media_stream(websocket: WebSocket) -> None:
             await conversation.close()
             # Voedt de Twilio-kostenschatting (duur × tarief) in het dashboard.
             await usage_log.log_call_end(pool, conversation.call_id)
+        try:
+            # Cruciaal: zonder een expliciete, nette WebSocket-close hier kan
+            # Twilio de stream-teardown niet correct afronden (geobserveerd
+            # als Twilio-fout 31921 "Stream - WebSocket - Close Error") — het
+            # gesprek zelf was al lang voorbij, maar Twilio hield de lijn
+            # nog ~13 minuten "verbonden" (en gefactureerd) tot een interne
+            # timeout, omdat onze kant nooit netjes sloot.
+            await websocket.close()
+        except RuntimeError:
+            pass  # al gesloten (bv. client verbrak de verbinding zelf eerst)
         if escalation_tasks:
             # Wachten met een cap: de klant heeft al opgehangen op dit punt,
             # dus extra wachttijd hier raakt niemands gespreks-ervaring — maar
