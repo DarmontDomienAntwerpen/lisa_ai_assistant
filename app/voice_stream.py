@@ -43,6 +43,12 @@ async def run_media_stream(websocket: WebSocket) -> None:
     stream_sid = ""
     tenant: Optional[tenants.Tenant] = None
     caller_number = ""
+    # Bijgehouden (niet enkel fire-and-forget) zodat we ze bij het opruimen
+    # van de call kunnen afwachten — anders riskeert een snel afgesloten
+    # gesprek dat de escalatiemail nooit verstuurd wordt (taak zonder
+    # referentie kan door de garbage collector opgeruimd worden voor hij
+    # klaar is, en het proces wacht er anders ook niet op).
+    escalation_tasks: list[asyncio.Task] = []
 
     async def relay_to_twilio() -> None:
         assert conversation is not None
@@ -65,14 +71,16 @@ async def run_media_stream(websocket: WebSocket) -> None:
                 # terechtkomen). In plaats daarvan: mail naar de eigenaar,
                 # het gesprek met Lisa loopt gewoon door.
                 assert tenant is not None
-                asyncio.create_task(
-                    _notify_escalation(
-                        tenant,
-                        pool,
-                        caller_number,
-                        event.get("customer_name", ""),
-                        event.get("escalation_type", "andere"),
-                        event.get("reason", ""),
+                escalation_tasks.append(
+                    asyncio.create_task(
+                        _notify_escalation(
+                            tenant,
+                            pool,
+                            caller_number,
+                            event.get("customer_name", ""),
+                            event.get("escalation_type", "andere"),
+                            event.get("reason", ""),
+                        )
                     )
                 )
 
@@ -111,3 +119,12 @@ async def run_media_stream(websocket: WebSocket) -> None:
             await conversation.close()
             # Voedt de Twilio-kostenschatting (duur × tarief) in het dashboard.
             await usage_log.log_call_end(pool, conversation.call_id)
+        if escalation_tasks:
+            # Wachten met een cap: de klant heeft al opgehangen op dit punt,
+            # dus extra wachttijd hier raakt niemands gespreks-ervaring — maar
+            # een hangende Gmail-call mag het opruimen van de WebSocket niet
+            # eeuwig blokkeren.
+            done, pending = await asyncio.wait(escalation_tasks, timeout=10)
+            for task in pending:
+                logger.error("Escalatiemail-taak nog niet klaar na 10s bij opruimen van de call — geannuleerd.")
+                task.cancel()
