@@ -41,22 +41,34 @@ def _use_production_database() -> None:
     """Onboarding hoort ALTIJD naar de productie-database te schrijven, nooit
     naar de lokale testdatabase in .env — anders komt een echte klant-
     koppeling nergens terecht waar de live Lisa op Railway ze kan vinden.
-    Haalt de productie-DATABASE_PUBLIC_URL rechtstreeks van Railway op (niet
-    uit .env) zodat er geen risico is dat iemand vergeet .env terug te
-    zetten. Faalt hard (geen stille fallback naar lokaal) als dit niet lukt."""
+    Haalt de productie-DATABASE_PUBLIC_URL EN de productie-
+    CONVERSATION_ENCRYPTION_KEY rechtstreeks van Railway op (niet uit .env):
+    zonder de sleutel mee over te nemen versleutelt dit script calendar_config
+    met de lokale sleutel, terwijl de live app op Railway met de PRODUCTIE-
+    sleutel probeert te ontsleutelen — dat geeft cryptography.fernet.
+    InvalidToken en een crash bij een echte binnenkomende oproep. Faalt hard
+    (geen stille fallback naar lokaal) als dit niet lukt."""
     try:
-        result = subprocess.run(
+        db_result = subprocess.run(
             ["railway", "variables", "--service", "Postgres", "--json"],
             capture_output=True, text=True, timeout=20, check=True,
         )
-        production_url = json.loads(result.stdout)["DATABASE_PUBLIC_URL"]
+        production_url = json.loads(db_result.stdout)["DATABASE_PUBLIC_URL"]
+
+        web_result = subprocess.run(
+            ["railway", "variables", "--service", "web", "--json"],
+            capture_output=True, text=True, timeout=20, check=True,
+        )
+        web_vars = json.loads(web_result.stdout)
+        production_encryption_key = web_vars["CONVERSATION_ENCRYPTION_KEY"]
     except Exception as exc:
         raise SystemExit(
-            "Kon de productie-database-URL niet ophalen via 'railway variables' "
-            f"(is de railway CLI geïnstalleerd en gelinkt aan dit project?): {exc}"
+            "Kon de productie-database-URL of -encryptiesleutel niet ophalen via "
+            f"'railway variables' (is de railway CLI geïnstalleerd en gelinkt aan dit project?): {exc}"
         ) from exc
     config.DATABASE_URL = production_url
-    print("Verbonden met: PRODUCTIE-database (Railway) — niet de lokale testdatabase.")
+    config.CONVERSATION_ENCRYPTION_KEY = production_encryption_key
+    print("Verbonden met: PRODUCTIE-database + productie-encryptiesleutel (Railway) — niet lokaal.")
 
 
 _use_production_database()
