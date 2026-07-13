@@ -28,6 +28,31 @@ def test_build_voice_instructions_includes_business_name_and_customer_context(te
     assert "Jan" in instructions_existing
 
 
+def test_build_voice_instructions_hides_notes_and_email_when_number_is_shared(tenant):
+    """Regressie-test (GDPR): een gedeeld nummer (gezin) kan meerdere
+    dossiers hebben. De 'beste gok' (meest recente) mag dan NIET zomaar zijn
+    e-mail/notities (kunnen gezondheidsdata bevatten) prijsgeven voor de
+    beller geïdentificeerd is — anders lekt persoon A's dossier naar een
+    gesprek met persoon B."""
+    jan = {"name": "Jan Peeters", "email": "jan@test.be", "notes": "kniepijn na blessure"}
+    marie = {"name": "Marie Peeters", "email": "", "notes": ""}
+
+    instructions = agent.build_voice_instructions(tenant, jan, is_new=False, all_known=[jan, marie])
+
+    assert "kniepijn" not in instructions
+    assert "jan@test.be" not in instructions
+    assert "Jan Peeters" in instructions  # naam zelf mag (nooit hardop gebruikt, zie promptregels)
+    assert "Marie Peeters" in instructions
+    assert "gedeeld nummer" in instructions.lower()
+
+
+def test_build_voice_instructions_shows_full_details_when_number_has_one_customer(tenant):
+    jan = {"name": "Jan Peeters", "email": "jan@test.be", "notes": "kniepijn na blessure"}
+    instructions = agent.build_voice_instructions(tenant, jan, is_new=False, all_known=[jan])
+    assert "jan@test.be" in instructions
+    assert "kniepijn" in instructions
+
+
 def test_build_voice_instructions_includes_niche_and_out_of_scope_guardrail(tenant):
     """Regressie-test: tenant.niche moet echt in de instructies terechtkomen —
     zonder dit weet Lisa niet dat een verzoek buiten haar sector valt (bv. een

@@ -24,7 +24,7 @@ from app.config import (
     OPENAI_REALTIME_SPEED,
     OPENAI_REALTIME_VOICE,
 )
-from app.customer_lookup import find_or_flag_new
+from app.customer_lookup import find_or_flag_new, local_list_customers
 
 logger = logging.getLogger("lisa")
 
@@ -66,7 +66,11 @@ class RealtimeConversation:
     async def connect(self) -> None:
         self.call_id = await usage_log.log_call_start(self.pool, self.tenant.client_id, self.phone_number, self.channel)
         customer, is_new = await find_or_flag_new(self.tenant, self.pool, self.phone_number)
-        instructions = agent.build_voice_instructions(self.tenant, customer, is_new)
+        # Bij een gedeeld nummer (gezin, kantoor) kan dit meer dan één dossier
+        # zijn — de "beste gok" (customer) mag dan geen e-mail/notities van een
+        # mogelijk verkeerde persoon meteen prijsgeven (zie _customer_context_text).
+        all_known = [] if is_new else await local_list_customers(self.pool, self.tenant.client_id, self.phone_number)
+        instructions = agent.build_voice_instructions(self.tenant, customer, is_new, all_known=all_known)
 
         self._ws = await websockets.connect(
             f"{_OPENAI_REALTIME_URL}?model={OPENAI_REALTIME_MODEL}",

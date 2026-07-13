@@ -390,18 +390,32 @@ def _upcoming_dates_text(now: datetime, days: int = 14) -> str:
     return ", ".join(lines)
 
 
-def _customer_context_text(customer: dict[str, Any] | None, is_new: bool) -> str:
+def _customer_context_text(customer: dict[str, Any] | None, is_new: bool, all_known: list[dict[str, Any]] | None = None) -> str:
     if is_new:
         return "Dit is een NIEUWE klant. Er is nog geen dossier — start de intake."
+    # Een gedeeld nummer (gezin, kantoor) kan meerdere personen kennen — welk
+    # dossier hier als "beste gok" doorkomt, is dan NIET betrouwbaar genoeg om
+    # e-mail/notities (kunnen gevoelige info bevatten, bv. gezondheidsdata) al
+    # bloot te geven voor de beller effectief geïdentificeerd is.
+    if all_known and len(all_known) > 1:
+        names = ", ".join(c.get("name", "onbekend") for c in all_known)
+        return (
+            f"Dit is een gedeeld nummer met MEERDERE gekende personen: {names}. "
+            "Je weet nog niet wie er nu precies belt — noem of gebruik GEEN "
+            "e-mailadres of notities van een specifiek dossier tot de beller "
+            "zichzelf voorstelt of dit anderszins duidelijk is."
+        )
     return f"Dit is een BESTAANDE klant. Bekende gegevens: {customer}"
 
 
-def build_voice_instructions(tenant: Any, customer: dict[str, Any] | None, is_new: bool) -> str:
+def build_voice_instructions(
+    tenant: Any, customer: dict[str, Any] | None, is_new: bool, all_known: list[dict[str, Any]] | None = None
+) -> str:
     now = datetime.now(DEFAULT_TIMEZONE)
     return VOICE_INSTRUCTIONS_BASE.format(
         business_name=tenant.business_name,
         niche=tenant.niche,
-        customer_context=_customer_context_text(customer, is_new),
+        customer_context=_customer_context_text(customer, is_new, all_known),
         system_prompt_extra=tenant.system_prompt_extra,
         current_datetime=now.strftime("%Y-%m-%d %H:%M"),
         current_weekday=_DUTCH_WEEKDAYS[now.weekday()],
