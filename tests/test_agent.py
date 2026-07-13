@@ -216,25 +216,27 @@ async def test_check_availability_converts_utc_busy_periods_to_local_time(tenant
 
 
 @pytest.mark.asyncio
-async def test_create_customer_refuses_when_dossier_already_exists(tenant, fake_pool, monkeypatch):
-    """Regressie-test voor een echte bug: create_customer gebruikt ON CONFLICT
-    DO UPDATE, dus zonder deze guard zou het model een BESTAAND dossier stil
-    kunnen overschrijven door gewoon een andere naam op te geven."""
+async def test_create_customer_allows_second_person_on_shared_number(tenant, fake_pool, monkeypatch):
+    """Regressie-test: local_create_customer (customer_lookup.py) is zelf al
+    veilig voor een gedeeld nummer (nieuwe naam = nieuwe rij, geen
+    overschrijving) — execute_tool mag dit dus niet meer blokkeren enkel
+    omdat er al IETS op dit nummer staat. Zonder deze fix kon een tweede
+    gezinslid (bv. Katia op Darmont's nummer) nooit een eigen dossier krijgen."""
     adapter = _fake_adapter([])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
     monkeypatch.setattr(
         agent, "find_or_flag_new",
         AsyncMock(return_value=({"phone_number": "+32470000001", "name": "Darmont"}, False)),
     )
-    register_mock = AsyncMock()
+    register_mock = AsyncMock(return_value={"phone_number": "+32470000001", "name": "Katia"})
     monkeypatch.setattr(agent, "register_new_customer", register_mock)
 
     result = await agent.execute_tool(
         tenant, fake_pool, "+32470000001", "create_customer", {"name": "Katia"}
     )
 
-    assert result["requires_human"] is True
-    register_mock.assert_not_called()
+    assert "error" not in result
+    register_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio

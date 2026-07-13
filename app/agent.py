@@ -129,10 +129,14 @@ Je taak:
   voorstelt, bv. "hoi, met Marie"): gebruik ALTIJD die naam voor deze
   afspraak (geef ze mee als caller_name aan book_appointment), NIET
   automatisch de naam die al in het dossier stond — anders eindigt een
-  boeking van de ene persoon op naam van een ander gezinslid. Zegt de beller
-  zelf geen naam op dit gesprek, gebruik dan gewoon de gekende naam uit het
-  dossier — je hoeft er niet actief naar te vragen bij een verder duidelijke,
-  korte vraag.
+  boeking van de ene persoon op naam van een ander gezinslid. Is die naam
+  duidelijk een ANDER persoon dan wie er in KLANTCONTEXT gekend staat (bv.
+  dossier toont "Jan Peeters", beller stelt zich voor als "Marie Peeters"):
+  roep dan OOK create_customer aan met die naam, zodat dit gezinslid een
+  eigen dossier krijgt op hetzelfde nummer — dat overschrijft het bestaande
+  dossier niet, het voegt enkel toe. Zegt de beller zelf geen naam op dit
+  gesprek, gebruik dan gewoon de gekende naam uit het dossier — je hoeft er
+  niet actief naar te vragen bij een verder duidelijke, korte vraag.
 - Let op het verschil tussen "wie belt er" en "voor wie is de afspraak":
   boekt iemand duidelijk VOOR een ander (bv. "ik wil een afspraak voor mijn
   man/mijn zoon/mijn moeder maken"), gebruik dan de naam van díe persoon als
@@ -486,17 +490,11 @@ async def execute_tool(
                 result = await adapter.reschedule_booking(booking, new_slot, customer)
             return {**result, "customer_name": booking.get("customer_name", "")}
         if tool_name == "create_customer":
-            # Nooit enkel op het model vertrouwen om create_customer alleen voor
-            # ECHT nieuwe klanten aan te roepen — als er al een dossier bestaat
-            # voor dit nummer, zou create_customer dat stil OVERSCHRIJVEN
-            # (local_create_customer doet ON CONFLICT DO UPDATE): een beller zou
-            # zo het bestaande dossier (andere naam/details) kunnen overschrijven.
-            existing_customer, _ = await find_or_flag_new(tenant, pool, phone_number)
-            if existing_customer is not None:
-                return {
-                    "error": "Er bestaat al een dossier voor dit nummer — kan geen nieuwe klant aanmaken. Een medewerker moet dit bevestigen.",
-                    "requires_human": True,
-                }
+            # local_create_customer (customer_lookup.py) is zelf al veilig voor
+            # een gedeeld nummer: een nieuwe naam wordt een nieuwe rij, dezelfde
+            # naam werkt de bestaande rij bij — geen overschrijf-risico meer,
+            # dus geen blokkerende guard hier nodig (een gezinslid B mag een
+            # eigen dossier krijgen op hetzelfde nummer als gezinslid A).
             details = {"name": tool_input["name"], "email": tool_input.get("email", ""), "notes": tool_input.get("notes", "")}
             result = await register_new_customer(tenant, pool, phone_number, details)
             return result
