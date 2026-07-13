@@ -10,12 +10,15 @@ tenant.system_prompt_extra en de gekoppelde integration-adapter.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from app.customer_lookup import find_or_flag_new, register_new_customer
 from app.integrations.base import IntegrationError, get_integration
+
+logger = logging.getLogger("lisa")
 
 # Google Calendar (en de meeste agenda-API's) weigeren timestamps zonder
 # tijdzone. Het model geeft soms een tijdstip zonder offset door — in dat
@@ -527,3 +530,16 @@ async def execute_tool(
         return {"error": f"Onbekende tool: {tool_name}"}
     except IntegrationError as exc:
         return {"error": str(exc)}
+    except Exception:
+        # Kritieke vangnet (gevonden via code-review): zonder deze catch-all
+        # doodde ELKE onverwachte fout hier (bv. het model geeft een niet-ISO
+        # datum door, of een tool_input mist een verplicht veld) stilzwijgend
+        # de audio-relay — de klant hoorde daarna niets meer, terwijl de call
+        # "verbonden" bleef. Nooit een stille faalstand (CLAUDE.md-regel 4):
+        # altijd een nette fout teruggeven zodat het model dit hardop aan de
+        # klant kan uitleggen i.p.v. gewoon te verdwijnen.
+        logger.exception("Onverwachte fout in execute_tool (tool=%s, tenant=%s)", tool_name, tenant.client_id)
+        return {
+            "error": "Er ging iets mis bij het verwerken van dit verzoek — probeer het anders te formuleren of geef door aan een medewerker.",
+            "requires_human": True,
+        }
