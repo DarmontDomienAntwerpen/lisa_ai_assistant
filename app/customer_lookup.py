@@ -27,6 +27,14 @@ CREATE TABLE IF NOT EXISTS customers (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (tenant_id, phone_number)
 );
+-- Een telefoonnummer kan door meerdere mensen gedeeld worden (gezin,
+-- kantoor) — elk met hun eigen naam/dossier. De oude UNIQUE(tenant_id,
+-- phone_number) liet maar één klant per nummer toe, wat een tweede beller
+-- silently onder de naam van de eerste liet boeken. `name` zit in het
+-- versleutelde `details`-veld (geen platte kolom), dus uniciteit per naam
+-- wordt in Python afgedwongen (zie local_create_customer), niet via SQL.
+ALTER TABLE customers DROP CONSTRAINT IF EXISTS customers_tenant_id_phone_number_key;
+CREATE INDEX IF NOT EXISTS idx_customers_tenant_phone ON customers (tenant_id, phone_number);
 """
 
 
@@ -35,31 +43,56 @@ async def init_schema(pool: asyncpg.Pool) -> None:
         await conn.execute(SCHEMA_SQL)
 
 
-async def local_lookup_customer(pool: asyncpg.Pool, tenant_id: str, phone_number: str) -> Optional[dict[str, Any]]:
+async def local_list_customers(pool: asyncpg.Pool, tenant_id: str, phone_number: str) -> list[dict[str, Any]]:
+    """Alle gekende personen op dit nummer, meest recent eerst — een gedeeld
+    nummer (gezin, kantoor) kan er meerdere hebben. Elk record bevat een
+    interne "_id" (rij-id) zodat local_create_customer een bestaande rij kan
+    bijwerken zonder op de (niet-deterministisch versleutelde) details te
+    moeten matchen."""
     async with pool.acquire() as conn:
-        record = await conn.fetchrow(
-            "SELECT phone_number, details FROM customers WHERE tenant_id = $1 AND phone_number = $2",
+        records = await conn.fetch(
+            "SELECT id, phone_number, details FROM customers WHERE tenant_id = $1 AND phone_number = $2 ORDER BY created_at DESC",
             tenant_id,
             phone_number,
         )
-    if record is None:
+    return [
+        {"_id": r["id"], "phone_number": r["phone_number"], **json.loads(decrypt_text(r["details"]))}
+        for r in records
+    ]
+
+
+async def local_lookup_customer(pool: asyncpg.Pool, tenant_id: str, phone_number: str) -> Optional[dict[str, Any]]:
+    """Standaard/beste-gok-klant voor dit nummer (meest recent gekend) — voor
+    plekken die maar één klant verwachten (bv. de "nieuw of bestaand"-check).
+    Gebruik local_list_customers() als alle namen op dit nummer nodig zijn."""
+    customers = await local_list_customers(pool, tenant_id, phone_number)
+    if not customers:
         return None
-    details = json.loads(decrypt_text(record["details"]))
-    return {"phone_number": record["phone_number"], **details}
+    return {k: v for k, v in customers[0].items() if k != "_id"}
 
 
 async def local_create_customer(pool: asyncpg.Pool, tenant_id: str, phone_number: str, details: dict[str, Any]) -> dict[str, Any]:
+    """Voegt een nieuw persoon toe op dit nummer, of werkt bij als er al een
+    rij met exact dezelfde naam bestaat (voorkomt onnodige duplicaten bij een
+    herhaalde intake van dezelfde persoon)."""
+    new_name = (details.get("name") or "").strip().lower()
+    existing = await local_list_customers(pool, tenant_id, phone_number)
+    match = next((c for c in existing if (c.get("name") or "").strip().lower() == new_name), None)
+
     async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO customers (tenant_id, phone_number, details)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (tenant_id, phone_number) DO UPDATE SET details = EXCLUDED.details
-            """,
-            tenant_id,
-            phone_number,
-            encrypt_text(json.dumps(details)),
-        )
+        if match is not None:
+            await conn.execute(
+                "UPDATE customers SET details = $1 WHERE id = $2",
+                encrypt_text(json.dumps(details)),
+                match["_id"],
+            )
+        else:
+            await conn.execute(
+                "INSERT INTO customers (tenant_id, phone_number, details) VALUES ($1, $2, $3)",
+                tenant_id,
+                phone_number,
+                encrypt_text(json.dumps(details)),
+            )
     return {"phone_number": phone_number, **details}
 
 
