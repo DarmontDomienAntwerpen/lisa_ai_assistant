@@ -16,7 +16,7 @@ load_dotenv()
 # --- OpenAI Realtime (voert het volledige gesprek: spraak, beslissen, tools) ---
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_REALTIME_MODEL = os.environ.get("OPENAI_REALTIME_MODEL", "gpt-realtime")
-OPENAI_REALTIME_VOICE = os.environ.get("OPENAI_REALTIME_VOICE", "alloy")
+OPENAI_REALTIME_VOICE = os.environ.get("OPENAI_REALTIME_VOICE", "marin")
 # 1.0 = normaal, range 0.25-1.5. LET OP: volgens OpenAI-community-rapporten kan
 # een afwijkende speed het accent/de taalconsistentie beïnvloeden — grondig
 # beluisteren voor dit naar productie gaat, dit werd hard bevochten deze sessie.
