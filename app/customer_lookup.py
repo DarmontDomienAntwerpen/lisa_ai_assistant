@@ -72,20 +72,32 @@ async def local_lookup_customer(pool: asyncpg.Pool, tenant_id: str, phone_number
 
 
 async def local_create_customer(pool: asyncpg.Pool, tenant_id: str, phone_number: str, details: dict[str, Any]) -> dict[str, Any]:
-    """Voegt een nieuw persoon toe op dit nummer, of werkt bij als er al een
+    """Voegt een nieuw persoon toe op dit nummer, of vult aan als er al een
     rij met exact dezelfde naam bestaat (voorkomt onnodige duplicaten bij een
-    herhaalde intake van dezelfde persoon)."""
+    herhaalde intake van dezelfde persoon).
+
+    VEILIGE MERGE, geen overschrijving: enkel velden die nog LEEG staan in
+    het bestaande dossier worden ingevuld met de nieuwe waarde. Gevonden via
+    security-review: een blinde overschrijving zou een toevallige naam-match
+    (verkeerd verstaan, of gewoon een veelvoorkomende naam) het bestaande
+    e-mailadres/notities (kunnen gezondheidsdata bevatten) laten wissen of
+    vervangen door verkeerde/nieuwe info, zonder enige verificatie."""
     new_name = (details.get("name") or "").strip().lower()
     existing = await local_list_customers(pool, tenant_id, phone_number)
     match = next((c for c in existing if (c.get("name") or "").strip().lower() == new_name), None)
 
     async with pool.acquire() as conn:
         if match is not None:
+            merged = {k: v for k, v in match.items() if k not in ("_id", "phone_number")}
+            for key, value in details.items():
+                if value and not merged.get(key):
+                    merged[key] = value
             await conn.execute(
                 "UPDATE customers SET details = $1 WHERE id = $2",
-                encrypt_text(json.dumps(details)),
+                encrypt_text(json.dumps(merged)),
                 match["_id"],
             )
+            return {"phone_number": phone_number, **merged}
         else:
             await conn.execute(
                 "INSERT INTO customers (tenant_id, phone_number, details) VALUES ($1, $2, $3)",

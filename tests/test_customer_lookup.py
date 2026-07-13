@@ -101,6 +101,29 @@ async def test_local_create_customer_updates_existing_row_for_same_name(fake_poo
 
 
 @pytest.mark.asyncio
+async def test_local_create_customer_never_overwrites_existing_nonempty_fields(fake_pool):
+    """Regressie-test (security-review): een toevallige naam-match (verkeerd
+    verstaan, of gewoon dezelfde voornaam als een andere klant) mag NOOIT
+    Jan's bestaande notities/e-mail stilzwijgend wissen of vervangen. Enkel
+    velden die nog leeg waren, mogen aangevuld worden."""
+    fake_pool.connection.fetch.return_value = [
+        {"id": 1, "phone_number": "+32470000001", "details": encrypt_text(json.dumps({
+            "name": "Jan", "email": "echte-jan@test.be", "notes": "kniepijn na blessure",
+        }))}
+    ]
+    await local_create_customer(
+        fake_pool, "kapper_devries", "+32470000001",
+        {"name": "Jan", "email": "andere-email@test.be", "notes": "nieuwe, mogelijk foute notitie"},
+    )
+
+    sql, new_details, row_id = fake_pool.connection.execute.call_args.args
+    assert "UPDATE customers" in sql
+    stored = json.loads(decrypt_text(new_details))
+    assert stored["email"] == "echte-jan@test.be"  # niet overschreven
+    assert stored["notes"] == "kniepijn na blessure"  # niet overschreven
+
+
+@pytest.mark.asyncio
 async def test_local_create_customer_never_stores_plaintext_notes(fake_pool):
     """Klantnotities kunnen gezondheidsgegevens bevatten (bv. kinebehandeling) —
     de opgeslagen waarde mag nooit het plaintext bevatten."""
