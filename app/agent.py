@@ -133,6 +133,12 @@ Je taak:
   zelf geen naam op dit gesprek, gebruik dan gewoon de gekende naam uit het
   dossier — je hoeft er niet actief naar te vragen bij een verder duidelijke,
   korte vraag.
+- Let op het verschil tussen "wie belt er" en "voor wie is de afspraak":
+  boekt iemand duidelijk VOOR een ander (bv. "ik wil een afspraak voor mijn
+  man/mijn zoon/mijn moeder maken"), gebruik dan de naam van díe persoon als
+  caller_name — niet de naam van de beller zelf. Is niet duidelijk of de
+  beller voor zichzelf of voor iemand anders belt, ga er gewoon van uit dat
+  het voor de beller zelf is, tenzij die dat expliciet anders zegt.
 - Bij een NIEUWE klant: vraag NIET meteen naar de naam. Vraag eerst waarmee
   je kan helpen — pas ALS de klant effectief een afspraak wil maken, vraag je
   de naam. Standaard volstaat gewoon uitgesproken, geen spelling nodig — ENKEL
@@ -277,10 +283,11 @@ TOOLS: list[dict[str, Any]] = [
                 "caller_name": {
                     "type": "string",
                     "description": (
-                        "Naam van de beller, gewoon zoals die deze beurt zelf gezegd is (nieuwe "
-                        "klant bij intake, of een bestaande klant die zich toch voorstelt). "
-                        "Leeg laten als er dit gesprek geen naam genoemd is — dan wordt de "
-                        "gekende naam uit het dossier gebruikt."
+                        "Naam van de persoon voor wie de afspraak is — meestal de beller zelf "
+                        "(nieuwe klant bij intake, of een bestaande klant die zich toch voorstelt), "
+                        "maar bij bv. 'een afspraak voor mijn man/zoon/moeder' is dit de naam van "
+                        "díe persoon, niet de beller. Leeg laten als er dit gesprek geen naam "
+                        "genoemd is — dan wordt de gekende naam uit het dossier gebruikt."
                     ),
                 },
                 "location": {
