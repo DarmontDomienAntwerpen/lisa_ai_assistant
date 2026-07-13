@@ -25,6 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import asyncpg  # noqa: E402
 import uvicorn  # noqa: E402
 from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.responses import HTMLResponse  # noqa: E402
@@ -176,9 +177,9 @@ document.getElementById('tenantForm').addEventListener('submit', async (e) => {{
     const res = await fetch('/create-tenant', {{
       method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify(data),
     }});
-    const result = await res.json();
-    if (!res.ok) throw new Error(result.detail || 'onbekende fout');
-    showConnectScreen(result.business_name);
+    const result = await _parseJsonSafe(res);
+    if (!res.ok) throw new Error(result.detail || `serverfout (${{res.status}})`);
+    showConnectScreen(result.business_name, result.client_id, result.note);
   }} catch (err) {{
     status.textContent = 'Fout: ' + err.message;
     status.className = 'status error';
@@ -186,28 +187,37 @@ document.getElementById('tenantForm').addEventListener('submit', async (e) => {{
   }}
 }});
 
-function showConnectScreen(businessName) {{
+// Voorkomt een cryptische "Unexpected token"-fout als de server een niet-JSON
+// foutpagina teruggeeft (bv. een onverwachte 500 zonder JSON-body).
+async function _parseJsonSafe(res) {{
+  try {{ return await res.json(); }} catch (e) {{ return {{detail: `serverfout (${{res.status}}), geen details beschikbaar`}}; }}
+}}
+
+function showConnectScreen(businessName, clientId, note) {{
   document.getElementById('app').innerHTML = `
     <h1>Google Agenda koppelen</h1>
+    ${{note ? `<p style="color:#b45309;">⚠ ${{note}}</p>` : ''}}
     <p>Voor <b>${{businessName}}</b> — geef de laptop nu aan de klant. Ze loggen in met het
     Google-account waarvan de agenda door Lisa gebruikt moet worden. Er wordt niets
     geïnstalleerd en er wordt geen wachtwoord gedeeld.</p>
-    <button id="connectBtn" onclick="startConnect()">Connecteer</button>
+    <button id="connectBtn" onclick="startConnect('${{clientId}}')">Connecteer</button>
     <button class="skip" onclick="skipConnect()">Geen agenda-koppeling nu — later instellen</button>
     <div class="status" id="status2"></div>
   `;
 }}
 
-async function startConnect() {{
+async function startConnect(clientId) {{
   const btn = document.getElementById('connectBtn');
   const status = document.getElementById('status2');
   btn.disabled = true;
   status.textContent = 'Bezig — een nieuw tabblad opent voor het Google-inlogscherm...';
   try {{
-    const res = await fetch('/connect-calendar', {{ method: 'POST' }});
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'onbekende fout');
-    showCalendarPicker(data.calendars);
+    const res = await fetch('/connect-calendar', {{
+      method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{client_id: clientId}}),
+    }});
+    const data = await _parseJsonSafe(res);
+    if (!res.ok) throw new Error(data.detail || `serverfout (${{res.status}})`);
+    showCalendarPicker(data.calendars, clientId);
   }} catch (err) {{
     status.textContent = 'Fout: ' + err.message;
     status.className = 'status error';
@@ -215,27 +225,27 @@ async function startConnect() {{
   }}
 }}
 
-function showCalendarPicker(calendars) {{
+function showCalendarPicker(calendars, clientId) {{
   const options = calendars.map(c => `<option value="${{c.id}}">${{c.summary}}${{c.primary ? ' (hoofdagenda)' : ''}}</option>`).join('');
   document.getElementById('app').innerHTML = `
     <h1>Welke agenda?</h1>
     <p>Dit Google-account heeft meerdere agenda's — welke moet Lisa gebruiken voor afspraken?</p>
     <select id="calendarSelect" style="width:100%; padding:0.6rem; border-radius:8px; border:1px solid #d1d5db; font-size:0.95rem;">${{options}}</select>
-    <button onclick="finishConnect()">Bevestigen</button>
+    <button onclick="finishConnect('${{clientId}}')">Bevestigen</button>
     <div class="status" id="status3"></div>
   `;
 }}
 
-async function finishConnect() {{
+async function finishConnect(clientId) {{
   const calendarId = document.getElementById('calendarSelect').value;
   const status = document.getElementById('status3');
   status.textContent = 'Bezig...';
   try {{
     const res = await fetch('/select-calendar', {{
-      method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{calendar_id: calendarId}}),
+      method: 'POST', headers: {{'Content-Type': 'application/json'}}, body: JSON.stringify({{client_id: clientId, calendar_id: calendarId}}),
     }});
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'onbekende fout');
+    const data = await _parseJsonSafe(res);
+    if (!res.ok) throw new Error(data.detail || `serverfout (${{res.status}})`);
     document.getElementById('app').innerHTML = `<h1>Klaar!</h1><p>${{data.business_name}} is volledig onboard: tenant aangemaakt, agenda gekoppeld (${{data.calendar_id}}).</p><p>Test nu zelf met een boeking of annulering voor de klant live gaat.</p>`;
   }} catch (err) {{
     status.textContent = 'Fout: ' + err.message;
@@ -255,38 +265,64 @@ async def create_tenant(form: TenantForm) -> dict:
     pool = await get_pool()
     await tenants.init_schema(pool)
 
+    client_id = _slugify(form.business_name)
+    # Kritieke fix: dit pad reset voorheen ALTIJD calendar_type/calendar_config
+    # naar "none"/{} — re-run dit formulier voor een klant die al eerder
+    # onboard werd (typo corrigeren, per ongeluk "/" i.p.v. "/edit" gebruikt),
+    # en de live Google-koppeling verdween stilzwijgend. Bestaat deze klant al,
+    # dan blijft de bestaande agenda-koppeling behouden — enkel de formuliervelden
+    # worden bijgewerkt, exact zoals "/edit" dat al deed voor zijn eigen velden.
+    existing = await tenants.get_tenant_by_client_id(pool, client_id)
     tenant = Tenant(
-        client_id=_slugify(form.business_name),
+        client_id=client_id,
         business_name=form.business_name,
         niche=form.niche,
         twilio_number=form.twilio_number,
-        calendar_type="none",
-        calendar_config={},
+        calendar_type=existing.calendar_type if existing else "none",
+        calendar_config=existing.calendar_config if existing else {},
         system_prompt_extra=form.system_prompt_extra,
         escalation_contact=form.escalation_contact,
         escalation_email=form.escalation_email,
     )
-    await tenants.upsert_tenant(pool, tenant)
-    _state["tenant"] = tenant
-    _state["pool"] = pool
+    try:
+        await tenants.upsert_tenant(pool, tenant)
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Dit Twilio-nummer ({form.twilio_number}) is al in gebruik door een andere klant.",
+        )
+    # Per client_id bijgehouden (niet één plat globaal "tenant"/"pool") zodat
+    # een oud/stilstaand tabblad van een vorige klant nooit per ongeluk de
+    # agenda-koppeling van een ANDERE, huidige klant kan overschrijven —
+    # elke vervolgstap geeft expliciet zijn eigen client_id mee.
+    _state[client_id] = {"tenant": tenant, "pool": pool}
+    if existing and existing.calendar_type != "none":
+        note = f"Klant bestond al met een actieve agenda-koppeling ({existing.calendar_type}) — die blijft behouden."
+    else:
+        note = ""
 
-    return {"business_name": tenant.business_name}
+    return {"business_name": tenant.business_name, "client_id": client_id, "note": note}
+
+
+class ConnectCalendarRequest(BaseModel):
+    client_id: str
 
 
 class CalendarChoice(BaseModel):
+    client_id: str
     calendar_id: str
 
 
 @app.post("/connect-calendar")
-async def connect_calendar() -> dict:
+async def connect_calendar(req: ConnectCalendarRequest) -> dict:
     """Stap 1: OAuth-login, dan de beschikbare agenda's van dit account
     oplijsten — NOOIT blind 'primary' aannemen, een account kan meerdere
     agenda's hebben (bv. een aparte "Kapsalon Afspraken"-agenda naast de
     persoonlijke hoofdagenda) en de klant moet zelf kunnen kiezen welke."""
-    tenant = _state.get("tenant")
-    pool = _state.get("pool")
-    if tenant is None or pool is None:
+    entry = _state.get(req.client_id)
+    if entry is None:
         raise HTTPException(status_code=400, detail="Nog geen tenant aangemaakt — vul eerst het formulier in.")
+    tenant, pool = entry["tenant"], entry["pool"]
     if not CLIENT_SECRET_PATH.exists():
         raise HTTPException(status_code=500, detail="Ontbreekt: google_oauth_client_secret.json")
 
@@ -295,7 +331,7 @@ async def connect_calendar() -> dict:
         return flow.run_local_server(port=0)
 
     credentials = await asyncio.to_thread(_run_oauth)
-    _state["credentials"] = credentials
+    entry["credentials"] = credentials
 
     calendar_list = await asyncio.to_thread(
         lambda: build("calendar", "v3", credentials=credentials).calendarList().list().execute()
@@ -324,9 +360,10 @@ async def connect_calendar() -> dict:
 @app.post("/select-calendar")
 async def select_calendar(choice: CalendarChoice) -> dict:
     """Stap 2: de klant koos welke agenda — nu pas definitief opslaan."""
-    tenant = _state.get("tenant")
-    pool = _state.get("pool")
-    credentials = _state.get("credentials")
+    entry = _state.get(choice.client_id)
+    tenant = entry["tenant"] if entry else None
+    pool = entry["pool"] if entry else None
+    credentials = entry.get("credentials") if entry else None
     if tenant is None or pool is None or credentials is None:
         raise HTTPException(status_code=400, detail="Geen lopende agenda-koppeling — begin opnieuw met 'Connecteer'.")
 
