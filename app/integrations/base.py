@@ -40,14 +40,14 @@ class Integration(ABC):
 
     @abstractmethod
     async def cancel_booking(self, booking: dict[str, Any], customer: dict[str, Any]) -> dict[str, Any]:
-        """Annuleert een afspraak. agent.py heeft de naam van de klant al
-        geverifieerd tegen booking['customer_name'] vóór dit aangeroepen
-        wordt — dit is de uitvoering, niet de veiligheidscheck zelf."""
+        """Annuleert een afspraak. agent.py heeft de juiste booking al
+        eenduidig bepaald (via booking_id, met dag/uur-verduidelijking bij
+        meerdere kandidaten op één nummer) vóór dit aangeroepen wordt."""
 
     @abstractmethod
     async def reschedule_booking(self, booking: dict[str, Any], new_slot: dict[str, Any], customer: dict[str, Any]) -> dict[str, Any]:
         """Verplaatst een afspraak naar new_slot. Zelfde voorwaarde als
-        cancel_booking: identiteit is al geverifieerd door agent.py."""
+        cancel_booking: de juiste booking is al eenduidig bepaald door agent.py."""
 
     @abstractmethod
     async def lookup_customer(self, phone_number: str) -> Optional[dict[str, Any]]:

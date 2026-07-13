@@ -93,13 +93,17 @@ class GoogleCalendarIntegration(Integration):
         import asyncio
 
         phone_number = customer.get("phone_number", "onbekend")
-        customer_name = customer.get("name", "")
+        # details["customer_name"] (wat de beller DEZE beurt zei, bepaald in
+        # agent.py) is de bron van waarheid, niet het dossier zelf — een
+        # gedeeld nummer kan meerdere mensen vertegenwoordigen.
+        customer_name = details.get("customer_name") or customer.get("name", "")
 
         def _insert():
             service = self._client()
             event = {
                 "summary": details.get("summary", f"Afspraak — {phone_number}"),
                 "description": details.get("description", ""),
+                "location": details.get("location", ""),
                 "start": {"dateTime": slot["start"]},
                 "end": {"dateTime": slot["end"]},
                 # Identiteit apart van vrije tekst opslaan, zodat find_bookings()
@@ -168,6 +172,10 @@ class GoogleCalendarIntegration(Integration):
             body = {
                 "summary": f"GEANNULEERD — {booking.get('summary', '')}".strip(" —"),
                 "transparency": "transparent",
+                # Grijs (Google Calendar colorId "8" = Graphite) zodat een
+                # geannuleerde afspraak ook visueel meteen opvalt tussen de
+                # actieve boekingen, niet enkel via de titel-prefix.
+                "colorId": "8",
                 "extendedProperties": {
                     "private": {
                         "phone_number": booking.get("phone_number", customer.get("phone_number", "")),

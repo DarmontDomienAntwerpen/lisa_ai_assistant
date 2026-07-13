@@ -92,6 +92,73 @@ async def test_book_appointment_succeeds_for_existing_customer_without_name_conf
 
 
 @pytest.mark.asyncio
+async def test_book_appointment_uses_caller_name_over_stored_dossier_name(tenant, fake_pool, monkeypatch):
+    """Regressie-test voor een echte bug (gevonden via live testen tegen een
+    echte agenda): een gedeeld telefoonnummer (bv. gezin) had één dossier op
+    naam van de eerste beller (Jan) — toen een TWEEDE gezinslid (Marie) zich
+    zelf voorstelde en boekte, kwam de afspraak toch op naam van Jan in de
+    agenda, want book_appointment gebruikte altijd de dossiernaam i.p.v. wat
+    de beller net zelf zei. caller_name moet nu voorrang krijgen."""
+    adapter = _fake_adapter([], busy_periods=[])
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
+    monkeypatch.setattr(
+        agent, "find_or_flag_new",
+        AsyncMock(return_value=({"phone_number": "+32470000001", "name": "Jan Peeters"}, False)),
+    )
+
+    await agent.execute_tool(
+        tenant, fake_pool, "+32470000001", "book_appointment",
+        {
+            "start": "2026-07-07T09:00:00", "end": "2026-07-07T09:30:00", "summary": "Kapbeurt",
+            "caller_name": "Marie Peeters",
+        },
+    )
+
+    _customer, _slot, details = adapter.book.call_args.args
+    assert details["customer_name"] == "Marie Peeters"
+    assert "Marie Peeters" in details["summary"]
+    assert "Jan Peeters" not in details["summary"]
+
+
+@pytest.mark.asyncio
+async def test_book_appointment_falls_back_to_dossier_name_without_caller_name(tenant, fake_pool, monkeypatch):
+    """Zegt de beller dit gesprek geen naam (niet nodig bij een duidelijke,
+    korte vraag), dan blijft de gekende dossiernaam gebruikt."""
+    adapter = _fake_adapter([], busy_periods=[])
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
+    monkeypatch.setattr(
+        agent, "find_or_flag_new",
+        AsyncMock(return_value=({"phone_number": "+32470000001", "name": "Jan Peeters"}, False)),
+    )
+
+    await agent.execute_tool(
+        tenant, fake_pool, "+32470000001", "book_appointment",
+        {"start": "2026-07-07T09:00:00", "end": "2026-07-07T09:30:00", "summary": "Kapbeurt"},
+    )
+
+    _customer, _slot, details = adapter.book.call_args.args
+    assert details["customer_name"] == "Jan Peeters"
+
+
+@pytest.mark.asyncio
+async def test_book_appointment_passes_location_through(tenant, fake_pool, monkeypatch):
+    adapter = _fake_adapter([], busy_periods=[])
+    monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
+    monkeypatch.setattr(agent, "find_or_flag_new", AsyncMock(return_value=(None, True)))
+
+    await agent.execute_tool(
+        tenant, fake_pool, "+32470000001", "book_appointment",
+        {
+            "start": "2026-07-07T09:00:00", "end": "2026-07-07T09:30:00", "summary": "Onderhoud cv-ketel",
+            "location": "Kerkstraat 12, 2000 Antwerpen",
+        },
+    )
+
+    _customer, _slot, details = adapter.book.call_args.args
+    assert details["location"] == "Kerkstraat 12, 2000 Antwerpen"
+
+
+@pytest.mark.asyncio
 async def test_book_appointment_refuses_when_slot_already_busy(tenant, fake_pool, monkeypatch):
     """Regressie-test: book_appointment mag nooit enkel op het model vertrouwen
     om eerst check_availability aan te roepen. Een klant die manueel al iets

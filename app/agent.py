@@ -121,9 +121,18 @@ Je taak:
   ook hier gewoon: "Hallo, u spreekt met de digitale assistent van
   {business_name}, dit gesprek wordt opgenomen. Waarmee kan ik u helpen?".
   Geen "spreek ik met {{naam}}?"-vraag: dat vereist de naam hardop te zeggen,
-  wat nooit mag (zie hierboven). Er is ook geen aparte naam-bevestiging meer
-  nodig voor book_appointment/cancel_appointment/reschedule_appointment — het
-  telefoonnummer IS de identiteitscheck.
+  wat nooit mag (zie hierboven).
+- Het telefoonnummer bepaalt WELK dossier/geschiedenis je opzoekt, maar is
+  GEEN garantie dat de beller ook effectief de gekende persoon is — een lijn
+  kan gedeeld zijn (gezin, kantoor). Noemt de beller op enig moment zelf een
+  naam (nieuwe klant bij intake, of een bestaande klant die zichzelf toch
+  voorstelt, bv. "hoi, met Marie"): gebruik ALTIJD die naam voor deze
+  afspraak (geef ze mee als caller_name aan book_appointment), NIET
+  automatisch de naam die al in het dossier stond — anders eindigt een
+  boeking van de ene persoon op naam van een ander gezinslid. Zegt de beller
+  zelf geen naam op dit gesprek, gebruik dan gewoon de gekende naam uit het
+  dossier — je hoeft er niet actief naar te vragen bij een verder duidelijke,
+  korte vraag.
 - Bij een NIEUWE klant: vraag NIET meteen naar de naam. Vraag eerst waarmee
   je kan helpen — pas ALS de klant effectief een afspraak wil maken, vraag je
   de naam (gewoon uitgesproken, geen spelling of letter-voor-letter nodig) en
@@ -131,8 +140,23 @@ Je taak:
   infovraag (geen afspraak) is dit niet nodig — dan hoef je geen intake te
   doen.
 - Bij een bestaande klant: gebruik de bekende gegevens, vraag niet opnieuw
-  naar dingen die je al weet (naam, contactgegevens, ...) — maar vraag wel
-  gewoon naar de reden van dit gesprek.
+  naar dingen die je al weet (contactgegevens, ...) — maar vraag wel gewoon
+  naar de reden van dit gesprek.
+- Levert find_upcoming_appointments MEER DAN ÉÉN afspraak op onder dit
+  nummer (kan bij een gedeelde lijn): ga NOOIT zomaar de eerste of meest
+  logische kiezen. Vraag ALTIJD expliciet welke bedoeld wordt, aan de hand
+  van dag en uur (bv. "Ik zie twee afspraken op dit nummer: donderdag 10u en
+  vrijdag 11u — welke bedoelt u?") — dag/uur is hier de betrouwbare manier om
+  te verduidelijken, niet een naam.
+- Is niet meteen duidelijk WAARVOOR de afspraak precies dient (bv. bij een
+  zaak waar dat kan variëren — onderhoud, herstelling, offerte, ...): vraag
+  dat kort na voor je book_appointment aanroept, en geef een concrete
+  omschrijving mee (summary/description) — niet enkel de dienstnaam. De
+  zaakeigenaar moet in één oogopslag in zijn agenda zien waarvoor de klant
+  komt, ongeacht de niche.
+- Werkt deze zaak bij de klant thuis/op locatie (system_prompt_extra
+  hieronder vermeldt dit)? Vraag dan altijd naar het volledige adres voor je
+  book_appointment aanroept, en geef dat mee als location.
 - Gebruik check_availability en book_appointment om afspraken te plannen.
   check_availability geeft BEZETTE periodes terug (busy_periods), niet vrije
   momenten: een lege lijst betekent dat de gevraagde periode volledig VRIJ
@@ -232,7 +256,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "name": "book_appointment",
-        "description": "Boek een afspraak voor de klant. Identiteit komt uit het telefoonnummer, geen naam-bevestiging nodig.",
+        "description": "Boek een afspraak voor de klant. Telefoonnummer bepaalt het dossier, maar geef caller_name mee als de beller zelf een naam noemde dit gesprek.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -240,9 +264,22 @@ TOOLS: list[dict[str, Any]] = [
                 "end": {"type": "string", "description": "Eindmoment, ISO 8601 datetime"},
                 "summary": {
                     "type": "string",
-                    "description": "Korte omschrijving van de DIENST (bv. 'Kapbeurt'). De klantnaam wordt automatisch toegevoegd, zet die er zelf niet bij.",
+                    "description": "Korte omschrijving van de DIENST/reden (bv. 'Kapbeurt', of bij variabele diensten iets concreets zoals 'Onderhoud cv-ketel'). De klantnaam wordt automatisch toegevoegd, zet die er zelf niet bij.",
                 },
                 "description": {"type": "string", "description": "Extra details, optioneel"},
+                "caller_name": {
+                    "type": "string",
+                    "description": (
+                        "Naam van de beller, gewoon zoals die deze beurt zelf gezegd is (nieuwe "
+                        "klant bij intake, of een bestaande klant die zich toch voorstelt). "
+                        "Leeg laten als er dit gesprek geen naam genoemd is — dan wordt de "
+                        "gekende naam uit het dossier gebruikt."
+                    ),
+                },
+                "location": {
+                    "type": "string",
+                    "description": "Volledig adres, enkel indien deze zaak ter plaatse werkt en dit gevraagd is.",
+                },
             },
             "required": ["start", "end", "summary"],
         },
@@ -382,8 +419,10 @@ async def execute_tool(
             ]
             return {"busy_periods": local_busy_periods, "fully_free": len(local_busy_periods) == 0}
         if tool_name == "book_appointment":
-            # Identiteit = telefoonnummer waarmee dit gesprek binnenkomt, geen
-            # aparte naam-bevestiging meer nodig (zie CLAUDE.md/agent-prompt).
+            # Telefoonnummer bepaalt WELK dossier opgezocht wordt, maar niet
+            # noodzakelijk WIE er nu belt (gedeelde lijn, bv. gezin) — zie
+            # CLAUDE.md/agent-prompt. caller_name (wat de beller deze beurt
+            # zelf zei) heeft daarom voorrang op de opgeslagen dossiernaam.
             customer, _ = await find_or_flag_new(tenant, pool, phone_number)
             start = _with_tz(datetime.fromisoformat(tool_input["start"]))
             end = _with_tz(datetime.fromisoformat(tool_input["end"]))
@@ -402,10 +441,14 @@ async def execute_tool(
             # afhankelijk van of het model daaraan denkt — zo ziet de kapper in
             # zijn/haar eigen agenda-app altijd meteen wie er komt en hoe die te
             # bereiken is, zonder in verborgen metadata te moeten kijken.
-            customer_name = (customer or {}).get("name") or "Onbekende klant"
+            # caller_name (wat deze beller NU zei) gaat voor de dossiernaam —
+            # anders eindigt de boeking van gezinslid B op naam van gezinslid A.
+            customer_name = tool_input.get("caller_name") or (customer or {}).get("name") or "Onbekende klant"
             details = {
                 "summary": f"{tool_input['summary']} — {customer_name} ({phone_number})",
                 "description": tool_input.get("description", ""),
+                "customer_name": customer_name,
+                "location": tool_input.get("location", ""),
             }
             result = await adapter.book(customer or {"phone_number": phone_number}, slot, details)
             return result
