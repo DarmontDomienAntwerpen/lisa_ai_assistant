@@ -116,3 +116,26 @@ def encrypt_text(plaintext: str) -> str:
 
 def decrypt_text(ciphertext: str) -> str:
     return _get_cipher().decrypt(ciphertext.encode()).decode()
+
+
+def validate_required_config() -> None:
+    """Faalt hard en luid bij het opstarten als een essentiële env var
+    ontbreekt — vóór er ooit een echte oproep binnenkomt. Gevonden via
+    code-review: zonder dit valideerden DATABASE_URL/CONVERSATION_ENCRYPTION_KEY
+    zichzelf pas lazy, bij het EERSTE echte gebruik (een DB-query, een
+    versleuteling) — en OPENAI_API_KEY nergens. Een verkeerd ingestelde
+    Railway-env-var werd zo pas zichtbaar op het moment dat een klant belde
+    (stille dode lijn), i.p.v. meteen bij de deploy zelf. Roep dit aan in
+    app/main.py's lifespan, voor de app verkeer aanvaardt."""
+    missing = []
+    if not OPENAI_API_KEY:
+        missing.append("OPENAI_API_KEY")
+    if not DATABASE_URL:
+        missing.append("DATABASE_URL")
+    if not CONVERSATION_ENCRYPTION_KEY:
+        missing.append("CONVERSATION_ENCRYPTION_KEY")
+    if missing:
+        raise RuntimeError(
+            f"Ontbrekende verplichte env-variabele(n): {', '.join(missing)} — "
+            "app start niet op. Zet deze in Railway/​.env voor je verder gaat."
+        )

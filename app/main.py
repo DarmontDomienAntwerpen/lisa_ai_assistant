@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Response, WebSocket
 
 from app import conversation_store, customer_lookup, tenants, usage_log, voice_stream
-from app.config import close_pool, get_pool
+from app.config import close_pool, get_pool, validate_required_config
 from app.twilio_handler import twiml_for_incoming_call, twiml_for_missing_tenant
 from dashboard.router import router as dashboard_router
 
@@ -21,6 +21,10 @@ logger = logging.getLogger("lisa")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Faalt hard en luid bij een ontbrekende env var — voor er verkeer
+    # aanvaard wordt, niet pas bij de eerste echte oproep (zie CLAUDE.md
+    # regel 4, "geen stille faalstand").
+    validate_required_config()
     pool = await get_pool()
     await tenants.init_schema(pool)
     await customer_lookup.init_schema(pool)
@@ -32,6 +36,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Lisa — AI Secretary", lifespan=lifespan)
 app.include_router(dashboard_router)
+
+
+@app.get("/health")
+async def health() -> dict:
+    """Voor Railway's healthcheck: bevestigt dat de app volledig opgestart is
+    (schema's gemigreerd, DB-pool klaar) voor er verkeer naartoe gerouteerd
+    wordt bij een deploy — voorkomt dat een binnenkomende call een instance
+    treft die nog niet klaar is."""
+    return {"status": "ok"}
 
 
 @app.post("/voice")
