@@ -16,6 +16,13 @@ from app.config import close_pool, get_pool, validate_required_config
 from app.twilio_handler import twiml_for_incoming_call, twiml_for_missing_tenant
 from dashboard.router import router as dashboard_router
 
+# KRITIEKE FIX (gevonden via monitoring-review): zonder dit expliciet te
+# zetten, erft de "lisa"-logger Python's standaard root-niveau (WARNING) —
+# vrijwel alle logger.info(...)-oproepen in de hele codebase (incl.
+# "Gesprek geëscaleerd voor tenant...") verdwenen zo stilzwijgend, nooit
+# zichtbaar in Railway's logs. Enkel warning/error/exception kwamen ooit door.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
 logger = logging.getLogger("lisa")
 
 
