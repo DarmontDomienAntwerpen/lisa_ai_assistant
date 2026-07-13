@@ -10,7 +10,9 @@ tenant.system_prompt_extra en de gekoppelde integration-adapter.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -19,6 +21,14 @@ from app.customer_lookup import find_or_flag_new, register_new_customer
 from app.integrations.base import IntegrationError, get_integration
 
 logger = logging.getLogger("lisa")
+
+# Sluit de smalle TOCTOU-race tussen check_availability en de effectieve
+# boeking/verplaatsing (gevonden via code-review): zonder lock konden twee
+# gelijktijdige bellers naar dezelfde zaak, voor hetzelfde tijdslot, allebei
+# de beschikbaarheidscheck doorstaan voor een van beiden effectief boekte.
+# Eén lock per tenant (niet globaal) — verschillende zaken mogen wel parallel
+# boeken, enkel dezelfde agenda niet.
+_booking_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
 # Google Calendar (en de meeste agenda-API's) weigeren timestamps zonder
 # tijdzone. Het model geeft soms een tijdstip zonder offset door — in dat
@@ -467,31 +477,35 @@ async def execute_tool(
             customer, _ = await find_or_flag_new(tenant, pool, phone_number)
             start = _with_tz(datetime.fromisoformat(tool_input["start"]))
             end = _with_tz(datetime.fromisoformat(tool_input["end"]))
-            # Nooit enkel op het model vertrouwen om eerst check_availability aan
-            # te roepen — dat is instructie, geen garantie. Dubbel boeken op een
-            # bezet tijdslot is een productieprobleem, dus wordt hier afgedwongen,
-            # niet enkel geadviseerd.
-            busy_periods = await adapter.check_availability(start, end)
-            if busy_periods:
-                return {
-                    "error": "Dit tijdslot is niet meer vrij — er staat al een afspraak op de agenda.",
-                    "busy_periods": busy_periods,
+            # Lock rond check+boek (gevonden via code-review): zonder dit konden
+            # twee gelijktijdige bellers voor dezelfde zaak/hetzelfde tijdslot
+            # allebei de check doorstaan voor een van beiden effectief boekte.
+            async with _booking_locks[tenant.client_id]:
+                # Nooit enkel op het model vertrouwen om eerst check_availability
+                # aan te roepen — dat is instructie, geen garantie. Dubbel boeken
+                # op een bezet tijdslot is een productieprobleem, dus wordt hier
+                # afgedwongen, niet enkel geadviseerd.
+                busy_periods = await adapter.check_availability(start, end)
+                if busy_periods:
+                    return {
+                        "error": "Dit tijdslot is niet meer vrij — er staat al een afspraak op de agenda.",
+                        "busy_periods": busy_periods,
+                    }
+                slot = {"start": _iso_with_tz(tool_input["start"]), "end": _iso_with_tz(tool_input["end"])}
+                # Klantnaam + telefoonnummer altijd deterministisch in de titel, niet
+                # afhankelijk van of het model daaraan denkt — zo ziet de kapper in
+                # zijn/haar eigen agenda-app altijd meteen wie er komt en hoe die te
+                # bereiken is, zonder in verborgen metadata te moeten kijken.
+                # caller_name (wat deze beller NU zei) gaat voor de dossiernaam —
+                # anders eindigt de boeking van gezinslid B op naam van gezinslid A.
+                customer_name = tool_input.get("caller_name") or (customer or {}).get("name") or "Onbekende klant"
+                details = {
+                    "summary": f"{tool_input['summary']} — {customer_name} ({phone_number})",
+                    "description": tool_input.get("description", ""),
+                    "customer_name": customer_name,
+                    "location": tool_input.get("location", ""),
                 }
-            slot = {"start": _iso_with_tz(tool_input["start"]), "end": _iso_with_tz(tool_input["end"])}
-            # Klantnaam + telefoonnummer altijd deterministisch in de titel, niet
-            # afhankelijk van of het model daaraan denkt — zo ziet de kapper in
-            # zijn/haar eigen agenda-app altijd meteen wie er komt en hoe die te
-            # bereiken is, zonder in verborgen metadata te moeten kijken.
-            # caller_name (wat deze beller NU zei) gaat voor de dossiernaam —
-            # anders eindigt de boeking van gezinslid B op naam van gezinslid A.
-            customer_name = tool_input.get("caller_name") or (customer or {}).get("name") or "Onbekende klant"
-            details = {
-                "summary": f"{tool_input['summary']} — {customer_name} ({phone_number})",
-                "description": tool_input.get("description", ""),
-                "customer_name": customer_name,
-                "location": tool_input.get("location", ""),
-            }
-            result = await adapter.book(customer or {"phone_number": phone_number}, slot, details)
+                result = await adapter.book(customer or {"phone_number": phone_number}, slot, details)
             return result
         if tool_name == "find_upcoming_appointments":
             customer, _ = await find_or_flag_new(tenant, pool, phone_number)
@@ -509,8 +523,21 @@ async def execute_tool(
             if tool_name == "cancel_appointment":
                 result = await adapter.cancel_booking(booking, customer)
             else:
-                new_slot = {"start": _iso_with_tz(tool_input["new_start"]), "end": _iso_with_tz(tool_input["new_end"])}
-                result = await adapter.reschedule_booking(booking, new_slot, customer)
+                new_start = _with_tz(datetime.fromisoformat(tool_input["new_start"]))
+                new_end = _with_tz(datetime.fromisoformat(tool_input["new_end"]))
+                # Zelfde lock als bij book_appointment — en gevonden via
+                # code-review: reschedule checkte de agenda nooit vooraf (in
+                # tegenstelling tot book_appointment), een klant kon zo
+                # verplaatsen naar een tijdslot dat al bezet was.
+                async with _booking_locks[tenant.client_id]:
+                    busy_periods = await adapter.check_availability(new_start, new_end)
+                    if busy_periods:
+                        return {
+                            "error": "Dit nieuwe tijdslot is niet vrij — er staat al een afspraak op de agenda.",
+                            "busy_periods": busy_periods,
+                        }
+                    new_slot = {"start": _iso_with_tz(tool_input["new_start"]), "end": _iso_with_tz(tool_input["new_end"])}
+                    result = await adapter.reschedule_booking(booking, new_slot, customer)
             return {**result, "customer_name": booking.get("customer_name", "")}
         if tool_name == "create_customer":
             # local_create_customer (customer_lookup.py) is zelf al veilig voor
@@ -531,6 +558,10 @@ async def execute_tool(
             }
         return {"error": f"Onbekende tool: {tool_name}"}
     except IntegrationError as exc:
+        # Gevonden via monitoring-review: dit werd nergens gelogd — een echte
+        # storing bij de agenda-koppeling (verlopen token, quota, uitval) was
+        # zo onzichtbaar server-side, enkel af te leiden uit een transcript.
+        logger.error("Agenda-koppeling faalde (tool=%s, tenant=%s): %s", tool_name, tenant.client_id, exc)
         return {"error": str(exc)}
     except Exception:
         # Kritieke vangnet (gevonden via code-review): zonder deze catch-all
