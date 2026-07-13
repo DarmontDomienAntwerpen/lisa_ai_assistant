@@ -31,11 +31,25 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS escalation_email TEXT NOT NULL DEFA
 -- onversleuteld op te slaan, net als klantnotities elders in dit systeem.
 -- Kolom wordt TEXT (versleutelde JSON is geen geldige JSONB meer). Bestaande
 -- waarden worden hier niet automatisch versleuteld (kan niet in pure SQL) —
--- worden dus gereset; enige impact vandaag is dat een eventuele test-
--- agenda-koppeling opnieuw gedaan moet worden.
-ALTER TABLE tenants ALTER COLUMN calendar_config DROP DEFAULT;
-ALTER TABLE tenants ALTER COLUMN calendar_config TYPE TEXT USING '';
-ALTER TABLE tenants ALTER COLUMN calendar_config SET DEFAULT '';
+-- worden dus gereset bij deze EENMALIGE migratie.
+--
+-- KRITIEKE FIX: init_schema() draait bij ELKE opstart (elke Railway-deploy/
+-- herstart, zie app/main.py's lifespan), niet enkel de allereerste keer.
+-- Zonder deze IF-guard voerde "ALTER COLUMN ... TYPE TEXT USING ''" zich
+-- ONVOORWAARDELIJK telkens opnieuw uit — ontdekt via een database-review en
+-- empirisch bevestigd: elke deploy wiste stilzwijgend de agenda-koppeling
+-- van ALLE klanten, ook een net-verbonden echte klant. De guard hieronder
+-- laat de migratie enkel lopen zolang de kolom nog het oude type (jsonb)
+-- heeft — eenmaal TEXT, nooit meer opnieuw uitvoeren.
+DO $$
+BEGIN
+    IF (SELECT data_type FROM information_schema.columns
+        WHERE table_name = 'tenants' AND column_name = 'calendar_config') = 'jsonb' THEN
+        ALTER TABLE tenants ALTER COLUMN calendar_config DROP DEFAULT;
+        ALTER TABLE tenants ALTER COLUMN calendar_config TYPE TEXT USING '';
+        ALTER TABLE tenants ALTER COLUMN calendar_config SET DEFAULT '';
+    END IF;
+END $$;
 """
 
 
