@@ -531,6 +531,27 @@ async def execute_tool(
                 # verplaatsen naar een tijdslot dat al bezet was.
                 async with _booking_locks[tenant.client_id]:
                     busy_periods = await adapter.check_availability(new_start, new_end)
+                    # Gevonden via live-test: een klant die zijn afspraak
+                    # licht verschuift/verlengt (bv. 30 min later, overlapt
+                    # dus met zichzelf) werd onterecht geweigerd, want de
+                    # afspraak zag zijn EIGEN huidige tijdslot als "bezet".
+                    # Eerste poging (exacte match wegfilteren) werkte niet:
+                    # Google's freebusy-API geeft het bezette stuk GEKNIPT
+                    # naar het opgevraagde tijdsvak terug, niet de volledige
+                    # originele afspraak — dus nooit een exacte match. Filter
+                    # daarom elk teruggegeven "bezet"-stuk dat volledig BINNEN
+                    # het eigen originele tijdslot valt (dat kan enkel de
+                    # eigen afspraak zelf zijn, geknipt).
+                    own_start = _with_tz(datetime.fromisoformat(booking["start"])) if booking.get("start") else None
+                    own_end = _with_tz(datetime.fromisoformat(booking["end"])) if booking.get("end") else None
+                    busy_periods = [
+                        b for b in busy_periods
+                        if not (
+                            own_start and own_end
+                            and datetime.fromisoformat(b["busy_start"]) >= own_start
+                            and datetime.fromisoformat(b["busy_end"]) <= own_end
+                        )
+                    ]
                     if busy_periods:
                         return {
                             "error": "Dit nieuwe tijdslot is niet vrij — er staat al een afspraak op de agenda.",
