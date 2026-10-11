@@ -1,9 +1,20 @@
-__pycache__/
-*.pyc
+# Secrets
 .env
+
+# Python
 .venv/
 venv/
-.pytest_cache/
+__pycache__/
+*.pyc
 *.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Editor / OS / tooling
+.DS_Store
+.claude/
+CLAUDE.md
+
+# Project-specific
 google_oauth_client_secret.json
 dev_google_token.json
