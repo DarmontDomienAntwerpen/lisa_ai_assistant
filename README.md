@@ -113,7 +113,7 @@ lisa_ai_assistant/
 ```
 
 ## Status & next steps
-In production with a first client. Planned next:
+Built and tested end to end, including a deployment on Railway with a real phone number. Currently not in active use. Possible next steps:
 - A WhatsApp channel (missed-call follow-up)
 - Additional calendar adapters (Outlook, custom booking systems)
 
