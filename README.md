@@ -7,7 +7,7 @@
 ![OpenAI Realtime](https://img.shields.io/badge/OpenAI-Realtime_API-412991?logo=openai&logoColor=white)
 ![Twilio](https://img.shields.io/badge/Twilio-Voice-F22F46?logo=twilio&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-75_passing-brightgreen)
+[![Tests](https://github.com/DarmontDomienAntwerpen/lisa_ai_assistant/actions/workflows/tests.yml/badge.svg)](https://github.com/DarmontDomienAntwerpen/lisa_ai_assistant/actions/workflows/tests.yml)
 
 > **In short:** small businesses (hair salons, garages, practices) miss calls all day because they are busy with customers. Lisa picks up the business's existing phone number, has a natural spoken conversation, checks the agenda, books the appointment, and emails the owner when something needs a human. One codebase serves many businesses, each with its own number, tone and calendar.
 
