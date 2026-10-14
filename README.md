@@ -120,3 +120,8 @@ Built and tested end to end, including a deployment on Railway with a real phone
 ## Author
 **Domien Darmont**, AI Engineer, Antwerp, Belgium
 GitHub: [@DomienDarmontAntwerpen](https://github.com/DomienDarmontAntwerpen)
+
+## License
+© 2026 Domien Darmont. All rights reserved.
+
+The source code of this project is published for viewing and evaluation only. No permission is granted to copy, modify, distribute or use it, in whole or in part, without prior written consent from the author.
