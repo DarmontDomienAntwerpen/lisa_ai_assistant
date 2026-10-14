@@ -118,8 +118,11 @@ Built and tested end to end, including a deployment on Railway with a real phone
 - Additional calendar adapters (Outlook, custom booking systems)
 
 ## Author
-**Domien Darmont**, AI Engineer, Antwerp, Belgium
-GitHub: [@DomienDarmontAntwerpen](https://github.com/DomienDarmontAntwerpen)
+**Domien Darmont**, AI Engineer, Antwerp, Belgium  
+GitHub: [@DomienDarmontAntwerpen](https://github.com/DomienDarmontAntwerpen)  
+LinkedIn: [Domien Darmont](https://www.linkedin.com/in/domien-darmont-b53b7640b/)
+
+A live demo or more information is available on request.
 
 ## License
 © 2026 Domien Darmont. All rights reserved.
