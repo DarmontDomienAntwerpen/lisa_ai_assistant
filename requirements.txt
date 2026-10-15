@@ -7,7 +7,7 @@ websockets==14.1
 asyncpg==0.30.0
 google-api-python-client==2.159.0
 google-auth==2.37.0
-google-auth-oauthlib==1.2.1  # dev-only: eenmalige OAuth-setup voor lokaal testen (scripts/google_oauth_setup.py)
+google-auth-oauthlib==1.2.1  # dev-only: eenmalige OAuth-setup voor lokaal testen (onboarding/google_oauth_setup.py)
 python-dotenv==1.0.1
 cryptography==49.0.0
 pytest==8.3.4

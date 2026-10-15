@@ -108,6 +108,9 @@ lisa_ai_assistant/
 ├── onboarding/       # One-time setup flows for new businesses
 ├── devtools/         # Talk to Lisa locally via text or microphone
 ├── tests/            # pytest suite
+├── PRIVACYBELEID_TEMPLATE.md  # Privacy policy template for client businesses (Dutch)
+├── pytest.ini
+├── railway.cron.json # Scheduled jobs on Railway
 ├── requirements.txt
 └── Procfile          # Railway deployment
 ```
