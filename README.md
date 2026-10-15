@@ -121,7 +121,7 @@ Built and tested end to end, including a deployment on Railway with a real phone
 - Additional calendar adapters (Outlook, custom booking systems)
 
 ## Author
-**Domien Darmont**, AI Engineer, Antwerp, Belgium  
+**Domien Darmont** — Operational leader building applied AI systems, Antwerp, Belgium  
 GitHub: [@DomienDarmontAntwerpen](https://github.com/DomienDarmontAntwerpen)  
 LinkedIn: [Domien Darmont](https://www.linkedin.com/in/domien-darmont-b53b7640b/)
 
