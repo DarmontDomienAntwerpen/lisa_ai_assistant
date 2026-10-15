@@ -122,7 +122,7 @@ Built and tested end to end, including a deployment on Railway with a real phone
 GitHub: [@DomienDarmontAntwerpen](https://github.com/DomienDarmontAntwerpen)  
 LinkedIn: [Domien Darmont](https://www.linkedin.com/in/domien-darmont-b53b7640b/)
 
-A live demo or more information is available on request.
+A live demo, the project presentation or answers to any questions are available on request.
 
 ## License
 © 2026 Domien Darmont. All rights reserved.
