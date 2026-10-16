@@ -12,3 +12,4 @@ python-dotenv==1.0.1
 cryptography==49.0.0
 pytest==8.3.4
 pytest-asyncio==0.25.2
+httpx==0.28.1  # tests: FastAPI TestClient

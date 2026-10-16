@@ -15,6 +15,6 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements.txt httpx  # httpx: FastAPI TestClient
+        run: pip install -r requirements.txt
       - name: Run tests
         run: python -m pytest -q
