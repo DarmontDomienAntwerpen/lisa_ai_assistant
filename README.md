@@ -116,7 +116,7 @@ lisa_ai_assistant/
 ```
 
 ## Status & next steps
-Built and tested end to end, including a deployment on Railway with a real phone number. Currently not in active use. Possible next steps:
+Built and tested end to end, including a deployment on Railway with a real phone number. Currently not in active use. The demo phone number is no longer active: to try Lisa live, connect your own Twilio number as described in [Run](#run); the offline test suite shows the behaviour without one. Possible next steps:
 - A WhatsApp channel (missed-call follow-up)
 - Additional calendar adapters (Outlook, custom booking systems)
 

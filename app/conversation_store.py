@@ -1,10 +1,10 @@
-"""Gesprekshistorie per (tenant, telefoonnummer).
+"""Conversation history per (tenant, phone number).
 
-GDPR: content wordt versleuteld opgeslagen (config.encrypt_text/decrypt_text)
-— gesprekken kunnen gezondheidsgegevens bevatten (bv. een kinebehandeling).
-Retentietermijn is expliciet (config.CONVERSATION_RETENTION_DAYS) en
-purge_expired() moet periodiek gedraaid worden (bv. Railway cron) om oude
-gespreksdata te verwijderen.
+GDPR: content is stored encrypted (config.encrypt_text/decrypt_text) -
+conversations can contain health data (e.g. a physiotherapy treatment).
+The retention period is explicit (config.CONVERSATION_RETENTION_DAYS) and
+purge_expired() must run periodically (e.g. a Railway cron) to delete old
+conversation data.
 """
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ async def purge_expired(pool: asyncpg.Pool, retention_days: int = CONVERSATION_R
 
 
 async def _run_purge() -> None:
-    """Entrypoint voor de Railway cron job: `python -m app.conversation_store`."""
+    """Entrypoint for the Railway cron job: `python -m app.conversation_store`."""
     from app.config import close_pool, get_pool
 
     pool = await get_pool()

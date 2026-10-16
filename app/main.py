@@ -1,8 +1,8 @@
 """FastAPI routes: /voice (TwiML) + /media-stream (WebSocket).
 
-Webhook-/WebSocket-laag — dun. Alle logica leeft in agent.py,
-realtime_client.py, voice_stream.py, tenants.py. Geen niche-specifieke code
-hier.
+Webhook/WebSocket layer - thin. All logic lives in agent.py,
+realtime_client.py, voice_stream.py, tenants.py. No niche-specific code
+here.
 """
 from __future__ import annotations
 
@@ -16,11 +16,11 @@ from app.config import close_pool, get_pool, validate_required_config
 from app.twilio_handler import twiml_for_incoming_call, twiml_for_missing_tenant
 from dashboard.router import router as dashboard_router
 
-# KRITIEKE FIX (gevonden via monitoring-review): zonder dit expliciet te
-# zetten, erft de "lisa"-logger Python's standaard root-niveau (WARNING) —
-# vrijwel alle logger.info(...)-oproepen in de hele codebase (incl.
-# "Gesprek geëscaleerd voor tenant...") verdwenen zo stilzwijgend, nooit
-# zichtbaar in Railway's logs. Enkel warning/error/exception kwamen ooit door.
+# CRITICAL FIX (found in monitoring review): without setting this
+# explicitly, the "lisa" logger inherits Python's default root level
+# (WARNING) - nearly every logger.info(...) call in the codebase (incl.
+# "Gesprek geëscaleerd voor tenant...") silently disappeared, never visible
+# in Railway's logs. Only warning/error/exception ever came through.
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 logger = logging.getLogger("lisa")
@@ -28,9 +28,9 @@ logger = logging.getLogger("lisa")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Faalt hard en luid bij een ontbrekende env var — voor er verkeer
-    # aanvaard wordt, niet pas bij de eerste echte oproep (zie CLAUDE.md
-    # regel 4, "geen stille faalstand").
+    # Fails hard and loudly on a missing env var - before traffic is
+    # accepted, not only at the first real call (see CLAUDE.md rule 4,
+    # "no silent failure").
     validate_required_config()
     pool = await get_pool()
     await tenants.init_schema(pool)
@@ -47,10 +47,10 @@ app.include_router(dashboard_router)
 
 @app.get("/health")
 async def health() -> dict:
-    """Voor Railway's healthcheck: bevestigt dat de app volledig opgestart is
-    (schema's gemigreerd, DB-pool klaar) voor er verkeer naartoe gerouteerd
-    wordt bij een deploy — voorkomt dat een binnenkomende call een instance
-    treft die nog niet klaar is."""
+    """For Railway's healthcheck: confirms the app has fully started
+    (schemas migrated, DB pool ready) before traffic is routed to it during a
+    deploy - prevents an incoming call from hitting an instance that is not
+    ready yet."""
     return {"status": "ok"}
 
 
@@ -66,9 +66,9 @@ async def voice(request: Request) -> Response:
         logger.warning("Inkomende oproep voor onbekend nummer: %s", to_number)
         return Response(content=twiml_for_missing_tenant(), media_type="application/xml")
 
-    # Hardcoded naar wss:// (nooit ws://): Twilio Media Streams vereist TLS, en
-    # achter Railway's proxy leest request.url het interne schema (vaak http)
-    # ook al komt de externe call binnen over https — detectie is dus onbetrouwbaar.
+    # Hardcoded to wss:// (never ws://): Twilio Media Streams requires TLS, and
+    # behind Railway's proxy request.url reads the internal scheme (often http)
+    # even though the external call comes in over https - so detection is unreliable.
     media_stream_url = str(request.url_for("media_stream")).split("://", 1)[1]
     media_stream_url = f"wss://{media_stream_url}"
     return Response(

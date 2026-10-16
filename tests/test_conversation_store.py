@@ -25,4 +25,4 @@ async def test_append_message_scopes_to_tenant_and_phone_number(fake_pool):
     assert args[2] == "+32470000001"
     assert args[3] == "voice"
     assert args[4] == "user"
-    assert args[5] != "Hoi"  # content moet versleuteld zijn, niet plat opgeslagen
+    assert args[5] != "Hoi"  # content must be encrypted, not stored in plain text

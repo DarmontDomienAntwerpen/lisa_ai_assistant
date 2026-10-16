@@ -1,9 +1,9 @@
-"""Fallback voor tenants zonder agenda-koppeling.
+"""Fallback for tenants without a calendar connection.
 
-Lisa boekt niets automatisch — ze noteert de wens van de klant, en een mens
-plant de afspraak handmatig in. Geen stille faalstand: book() geeft een
-duidelijke status "manual_follow_up_required" terug zodat agent.py de klant
-hierover kan informeren en de escalatiecontact hierover berichten.
+Lisa books nothing automatically - she notes the customer's request, and a
+person schedules the appointment by hand. No silent failure: book() returns
+a clear status "manual_follow_up_required" so agent.py can tell the customer
+and notify the escalation contact.
 """
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ class NoIntegration(Integration):
         }
 
     async def find_bookings(self, customer: dict[str, Any], start: datetime, end: datetime) -> list[dict[str, Any]]:
-        # Zonder agenda-koppeling wordt niets automatisch bijgehouden — een
-        # medewerker moet dit zelf opzoeken, we kunnen hier niets bevestigen.
+        # Without a calendar connection nothing is tracked automatically - a
+        # staff member has to look this up; we cannot confirm anything here.
         return []
 
     async def cancel_booking(self, booking: dict[str, Any], customer: dict[str, Any]) -> dict[str, Any]:

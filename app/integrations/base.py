@@ -1,7 +1,7 @@
-"""Abstracte interface voor agenda/klantsysteem-koppelingen.
+"""Abstract interface for calendar/customer-system integrations.
 
-Elke niche-/klantspecifieke integratie implementeert dezelfde interface, zodat
-agent.py en main.py nooit hoeven te weten welk systeem een tenant gebruikt.
+Every niche- or customer-specific integration implements the same interface,
+so agent.py and main.py never need to know which system a tenant uses.
 """
 from __future__ import annotations
 
@@ -11,60 +11,60 @@ from typing import Any, Optional
 
 
 class IntegrationError(Exception):
-    """Agenda/klantsysteem faalde. Nooit stil negeren — main.py vangt dit op
-    en stuurt de klant altijd een duidelijk bericht."""
+    """The calendar/customer system failed. Never ignore silently - main.py
+    catches this and always sends the customer a clear message."""
 
 
 class Integration(ABC):
     @abstractmethod
     async def check_availability(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
-        """Geeft beschikbare tijdslots terug binnen [start, end]."""
+        """Returns available time slots within [start, end]."""
 
     @abstractmethod
     async def book(self, customer: dict[str, Any], slot: dict[str, Any], details: dict[str, Any]) -> dict[str, Any]:
-        """Boekt een afspraak. Geeft een bevestiging terug (of raise IntegrationError).
+        """Books an appointment. Returns a confirmation (or raises IntegrationError).
 
-        Implementaties moeten de klantnaam en telefoonnummer opslaan bij de
-        afspraak (bv. in extended properties), zodat find_bookings() later
-        veilig kan matchen op identiteit — niet enkel op vrije tekst.
+        Implementations must store the customer name and phone number with the
+        appointment (e.g. in extended properties), so find_bookings() can later
+        match safely on identity - not just on free text.
         """
 
     @abstractmethod
     async def find_bookings(self, customer: dict[str, Any], start: datetime, end: datetime) -> list[dict[str, Any]]:
-        """Geeft aankomende afspraken van déze klant terug binnen [start, end].
+        """Returns this customer's upcoming appointments within [start, end].
 
-        Elk item bevat minstens booking_id, start, end, customer_name,
-        phone_number — nodig voor de identiteitscheck in agent.py voor er
-        geannuleerd of verplaatst wordt.
+        Each item has at least booking_id, start, end, customer_name,
+        phone_number - needed for the identity check in agent.py before anything
+        is cancelled or rescheduled.
         """
 
     @abstractmethod
     async def cancel_booking(self, booking: dict[str, Any], customer: dict[str, Any]) -> dict[str, Any]:
-        """Annuleert een afspraak. agent.py heeft de juiste booking al
-        eenduidig bepaald (via booking_id, met dag/uur-verduidelijking bij
-        meerdere kandidaten op één nummer) vóór dit aangeroepen wordt."""
+        """Cancels an appointment. agent.py has already identified the right
+        booking unambiguously (via booking_id, with day/time clarification when
+        one number has several candidates) before this is called."""
 
     @abstractmethod
     async def reschedule_booking(self, booking: dict[str, Any], new_slot: dict[str, Any], customer: dict[str, Any]) -> dict[str, Any]:
-        """Verplaatst een afspraak naar new_slot. Zelfde voorwaarde als
-        cancel_booking: de juiste booking is al eenduidig bepaald door agent.py."""
+        """Moves an appointment to new_slot. Same precondition as
+        cancel_booking: agent.py has already identified the right booking."""
 
     @abstractmethod
     async def lookup_customer(self, phone_number: str) -> Optional[dict[str, Any]]:
-        """Bestaande klant? Geeft klantgegevens terug, of None als onbekend."""
+        """Existing customer? Returns the customer details, or None if unknown."""
 
     @abstractmethod
     async def create_customer(self, details: dict[str, Any]) -> dict[str, Any]:
-        """Maakt een nieuwe klant aan en geeft de klantgegevens terug."""
+        """Creates a new customer and returns the customer details."""
 
 
 def get_integration(tenant: Any, pool: Any) -> Integration:
-    """Factory: kiest de juiste adapter op basis van tenant.calendar_type.
+    """Factory: picks the right adapter based on tenant.calendar_type.
 
-    Faalt hard (ValueError) bij een onbekend type — nooit stil terugvallen op
-    een verkeerde integratie.
+    Fails hard (ValueError) on an unknown type - never silently falls back to
+    the wrong integration.
     """
-    # Lazy imports om circulaire afhankelijkheden en onnodige SDK-imports te vermijden.
+    # Lazy imports to avoid circular dependencies and needless SDK imports.
     if tenant.calendar_type == "google_calendar":
         from app.integrations.google_calendar import GoogleCalendarIntegration
 

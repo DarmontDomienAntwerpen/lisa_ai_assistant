@@ -1,15 +1,15 @@
-"""Dev-tool: eenmalige OAuth-koppeling met je persoonlijke Google Calendar.
+"""Dev tool: one-time OAuth connection to your personal Google Calendar.
 
-Niet onderdeel van de productiecode. Klanten van Lisa gebruiken later een
-service-account (zie integrations/google_calendar.py), maar voor lokaal
-testen met je eigen agenda log je zelf in via je browser.
+Not part of the production code. Lisa's customers later use a service
+account (see integrations/google_calendar.py), but for local testing with
+your own calendar you log in yourself through your browser.
 
-Gebruik:
+Usage:
   python onboarding/google_oauth_setup.py
 
-Vereist google_oauth_client_secret.json in de projectroot (OAuth Desktop-app
-credentials uit Google Cloud Console). Schrijft dev_google_token.json weg
-met de refresh_token — dat bestand voedt dev_chat_ui.py.
+Requires google_oauth_client_secret.json in the project root (OAuth Desktop
+app credentials from Google Cloud Console). Writes dev_google_token.json
+with the refresh_token - that file feeds dev_chat_ui.py.
 """
 from __future__ import annotations
 

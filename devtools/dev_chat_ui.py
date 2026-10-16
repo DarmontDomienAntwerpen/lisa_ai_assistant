@@ -1,13 +1,13 @@
-"""Dev-tool: chat met Lisa in de browser, gekoppeld aan een echte Google Calendar.
+"""Dev tool: chat with Lisa in the browser, connected to a real Google Calendar.
 
-Gebruik:
-  1. python onboarding/google_oauth_setup.py   (eenmalig, schrijft dev_google_token.json)
+Usage:
+  1. python onboarding/google_oauth_setup.py   (once, writes dev_google_token.json)
   2. python dev_chat_ui.py
   3. open http://localhost:8001
 
-Niet onderdeel van de productiecode — puur om lokaal te testen, net als
-dev_chat.py maar dan met een browser-UI en een echte agenda-koppeling
-i.p.v. calendar_type="none".
+Not part of the production code - only for local testing, like dev_chat.py
+but with a browser UI and a real calendar connection instead of
+calendar_type="none".
 """
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ from app.tenants import Tenant
 
 TOKEN_PATH = Path(__file__).resolve().parent.parent / "dev_google_token.json"
 TEST_PHONE_NUMBER = "+32499999998"
-# Aparte "Lisa test"-kalender in het gekoppelde Google-account, niet de
-# persoonlijke hoofdagenda ("primary") van dat account.
+# A separate "Lisa test" calendar in the connected Google account, not that
+# account's personal main calendar ("primary").
 CALENDAR_ID = "c24b156dda02f2d3c8e23e8c419dbe1d0324eb46a1f92c4ac1892c56710b9774@group.calendar.google.com"
 
 

@@ -1,16 +1,16 @@
-"""Eenmalige setup: koppel Darmont Digital's eigen Gmail-account om
-escalatiemails (en dagelijkse backups) via te versturen — voor ALLE klanten
-samen, niet per klant. Gebruikt de Gmail API (HTTPS) in plaats van SMTP:
-Railway blokkeert uitgaande SMTP-poorten op het Trial/Hobby-plan, de Gmail
-API niet (gewone HTTPS-aanroepen).
+"""One-time setup: connect Darmont Digital's own Gmail account to send
+escalation emails (and daily backups) from - for ALL customers together,
+not per customer. Uses the Gmail API (HTTPS) instead of SMTP: Railway blocks
+outgoing SMTP ports on the Trial/Hobby plan, but not the Gmail API (plain
+HTTPS calls).
 
-Los van de agenda-koppeling per klant (die blijft OAuth per tenant) — dit
-is jouw EIGEN verzendaccount, eenmalig, geldt voor het hele systeem.
+Separate from the per-customer calendar connection (that stays OAuth per
+tenant) - this is your OWN sender account, set up once, for the whole system.
 
-Gebruik:
+Usage:
   python onboarding/gmail_sender_setup.py
 
-Print aan het einde een JSON-string — zet die als GMAIL_SENDER_OAUTH_CREDENTIALS
+Prints a JSON string at the end - set it as GMAIL_SENDER_OAUTH_CREDENTIALS
 in Railway (railway variables --service web --set "GMAIL_SENDER_OAUTH_CREDENTIALS=<...>").
 """
 from __future__ import annotations

@@ -1,10 +1,10 @@
-"""Dev-tool: chat met Lisa in de terminal, zonder Twilio.
+"""Dev tool: chat with Lisa in the terminal, without Twilio.
 
-Gebruik: python dev_chat.py
-Zet een test-tenant klaar (calendar_type="none") en praat in tekst met exact
-dezelfde OpenAI Realtime-sessie/tool-laag als een echte oproep (audio=False
-i.p.v. audio=True) — zie realtime_client.RealtimeConversation. Niet
-onderdeel van de productiecode — puur om lokaal te testen.
+Usage: python dev_chat.py
+Sets up a test tenant (calendar_type="none") and talks in text with exactly
+the same OpenAI Realtime session/tool layer as a real call (audio=False
+instead of audio=True) - see realtime_client.RealtimeConversation. Not part
+of the production code - only for local testing.
 """
 from __future__ import annotations
 

@@ -1,13 +1,13 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 python-multipart==0.0.20  # required by FastAPI to parse Twilio's form-encoded /voice webhook
-pydantic==2.13.4  # onboarding/onboard_webapp.py + devtools/dev_chat_ui.py request-modellen
+pydantic==2.13.4  # onboarding/onboard_webapp.py + devtools/dev_chat_ui.py request models
 twilio==9.4.4
 websockets==14.1
 asyncpg==0.30.0
 google-api-python-client==2.159.0
 google-auth==2.37.0
-google-auth-oauthlib==1.2.1  # dev-only: eenmalige OAuth-setup voor lokaal testen (onboarding/google_oauth_setup.py)
+google-auth-oauthlib==1.2.1  # dev-only: one-time OAuth setup for local testing (onboarding/google_oauth_setup.py)
 python-dotenv==1.0.1
 cryptography==49.0.0
 pytest==8.3.4

@@ -1,11 +1,10 @@
-"""Eén OpenAI Realtime-sessie: sessie opzetten (tools + instructies),
-function-calls afhandelen via agent.execute_tool, en transcript/usage
-capteren.
+"""One OpenAI Realtime session: set up the session (tools + instructions),
+handle function calls via agent.execute_tool, and capture transcript/usage.
 
-Audio (Twilio, voice_stream.py) en tekst (dev-tools) delen deze kern — enkel
-de modaliteit en de manier waarop audio/tekst binnenkomt of buiten gaat
-verschilt per aanroeper. Zo raakt lokaal testen exact dezelfde brain/tool-laag
-als een echte oproep (zie CLAUDE.md, "Architectuur van het voice-gesprek").
+Audio (Twilio, voice_stream.py) and text (dev tools) share this core - only
+the modality and the way audio/text comes in or goes out differ per caller.
+So local testing hits exactly the same brain/tool layer as a real call (see
+CLAUDE.md, "Architecture of the voice conversation").
 """
 from __future__ import annotations
 
@@ -30,16 +29,16 @@ logger = logging.getLogger("lisa")
 
 _OPENAI_REALTIME_URL = "wss://api.openai.com/v1/realtime"
 
-# GA-schema audio-formats (geverifieerd tegen de echte API — dit is geen beta-
-# schema meer: "g711_ulaw"/"pcm16" als platte strings bestaan niet meer).
+# GA-schema audio formats (verified against the real API - this is no longer
+# the beta schema: "g711_ulaw"/"pcm16" as plain strings no longer exist).
 _AUDIO_FORMATS: dict[str, dict[str, Any]] = {
     "g711_ulaw": {"type": "audio/pcmu"},  # Twilio Media Streams
-    "pcm16": {"type": "audio/pcm", "rate": 24000},  # browser-mic dev-tool
+    "pcm16": {"type": "audio/pcm", "rate": 24000},  # browser-mic dev tool
 }
 
 
 class RealtimeConversation:
-    """Eén live gesprek (call of dev-testgesprek) met de OpenAI Realtime API."""
+    """One live conversation (call or dev test conversation) with the OpenAI Realtime API."""
 
     def __init__(self, tenant: Any, pool: Any, phone_number: str, channel: str, audio: bool, audio_format: str = "g711_ulaw"):
         self.tenant = tenant
@@ -47,17 +46,17 @@ class RealtimeConversation:
         self.phone_number = phone_number
         self.channel = channel
         self.audio = audio
-        self.audio_format = audio_format  # "g711_ulaw" (Twilio) of "pcm16" (browser-mic dev-tool)
+        self.audio_format = audio_format  # "g711_ulaw" (Twilio) or "pcm16" (browser-mic dev tool)
         self.escalated = False
         self._tool_calls_this_turn = 0
         self._had_function_call_this_response = False
-        # Voor onderbrekingen (barge-in): bij een WebSocket-verbinding (i.t.t.
-        # WebRTC) is de CLIENT zelf verantwoordelijk voor het opschonen van een
-        # lopende audio-respons zodra de klant begint te praten — anders speelt
-        # de staart van het oude antwoord nog door bovenop het nieuwe, wat
-        # klinkt als een stem die abrupt verandert. We houden bij welk
-        # output-item nu audio streamt en sinds wanneer, om bij een interrupt
-        # een zo goed mogelijke conversation.item.truncate te kunnen sturen.
+        # For interruptions (barge-in): on a WebSocket connection (unlike
+        # WebRTC) the CLIENT itself must clean up an audio response in
+        # progress as soon as the customer starts talking - otherwise the
+        # tail of the old answer keeps playing over the new one, which
+        # sounds like a voice that changes abruptly. We track which
+        # output item is streaming audio now and since when, so on an
+        # interrupt we can send the best possible conversation.item.truncate.
         self._current_output_item_id: Optional[str] = None
         self._current_output_audio_started_at: Optional[float] = None
         self._ws: Optional[Any] = None
@@ -66,9 +65,9 @@ class RealtimeConversation:
     async def connect(self) -> None:
         self.call_id = await usage_log.log_call_start(self.pool, self.tenant.client_id, self.phone_number, self.channel)
         customer, is_new = await find_or_flag_new(self.tenant, self.pool, self.phone_number)
-        # Bij een gedeeld nummer (gezin, kantoor) kan dit meer dan één dossier
-        # zijn — de "beste gok" (customer) mag dan geen e-mail/notities van een
-        # mogelijk verkeerde persoon meteen prijsgeven (zie _customer_context_text).
+        # On a shared number (family, office) this can be more than one record -
+        # the "best guess" (customer) must then not reveal email/notes of a
+        # possibly wrong person straight away (see _customer_context_text).
         all_known = [] if is_new else await local_list_customers(self.pool, self.tenant.client_id, self.phone_number)
         instructions = agent.build_voice_instructions(self.tenant, customer, is_new, all_known=all_known)
 
@@ -89,21 +88,21 @@ class RealtimeConversation:
             session["audio"] = {
                 "input": {
                     "format": audio_format,
-                    # "prompt" biast de transcriptie naar aannemelijke vocabulaire
-                    # voor DEZE zaak (bv. "knipbeurt" i.p.v. het foneetisch
-                    # gelijkaardige "kniebeurt") — generiek via tenant.niche/
-                    # business_name, geen hardcoded woordenlijst per niche.
+                    # "prompt" biases the transcription towards plausible vocabulary
+                    # for THIS business (e.g. "knipbeurt" instead of the phonetically
+                    # similar "kniebeurt") - generic via tenant.niche/business_name,
+                    # no hardcoded word list per niche.
                     "transcription": {
                         "model": "gpt-4o-mini-transcribe",
                         "prompt": f"Telefoongesprek met {self.tenant.business_name}, een zaak in de niche '{self.tenant.niche}'. Vlaams-Nederlands.",
                     },
-                    # semantic_vad i.p.v. server_vad: beoordeelt of de zin van de
-                    # klant semantisch/grammaticaal AF aanvoelt in plaats van enkel
-                    # op een vaste stilte-timer te varen — een denkpauze midden in
-                    # een zin ("ik ben... eh... Peeters") triggert dan geen voortijdig
-                    # antwoord. eagerness="low" bleek te ver doorschieten (soms
-                    # helemaal geen antwoord tot de klant nog eens iets zei) —
-                    # "auto" is de gebalanceerde middenweg.
+                    # semantic_vad instead of server_vad: judges whether the
+                    # customer's sentence feels semantically/grammatically FINISHED
+                    # instead of relying only on a fixed silence timer - a thinking
+                    # pause mid-sentence ("ik ben... eh... Peeters") then does not
+                    # trigger a premature answer. eagerness="low" went too far
+                    # (sometimes no answer at all until the customer spoke again) -
+                    # "auto" is the balanced middle ground.
                     "turn_detection": {"type": "semantic_vad", "eagerness": "auto", "create_response": True},
                 },
                 "output": {"voice": OPENAI_REALTIME_VOICE, "format": audio_format, "speed": OPENAI_REALTIME_SPEED},
@@ -115,8 +114,8 @@ class RealtimeConversation:
             await self._ws.close()
 
     async def start(self) -> None:
-        """Lisa opent het gesprek zelf: geen klant-input nodig, gewoon vragen om
-        een antwoord — ze groet meteen volgens haar instructies."""
+        """Lisa opens the conversation herself: no customer input needed, just
+        ask for a response - she greets right away according to her instructions."""
         await self._ws.send(json.dumps({"type": "response.create"}))
 
     async def send_audio_chunk(self, base64_payload: str) -> None:
@@ -132,9 +131,9 @@ class RealtimeConversation:
         await self._ws.send(json.dumps({"type": "response.create"}))
 
     async def events(self) -> AsyncIterator[dict[str, Any]]:
-        """Normaliseert OpenAI Realtime-events voor de aanroeper. Function-calls
-        worden hier al intern afgehandeld (agent.execute_tool) — de aanroeper
-        ziet enkel audio/tekst-output en statusevents."""
+        """Normalizes OpenAI Realtime events for the caller. Function calls are
+        already handled internally here (agent.execute_tool) - the caller only
+        sees audio/text output and status events."""
         async for raw in self._ws:
             event = json.loads(raw)
             event_type = event.get("type")
@@ -176,9 +175,9 @@ class RealtimeConversation:
                         yield tool_event
 
             elif event_type == "response.done":
-                # Deze respons is normaal afgerond (niet onderbroken) — geen
-                # actief output-item meer om bij een volgende speech_started
-                # te moeten afkappen.
+                # This response finished normally (not interrupted) - no
+                # active output item left to cut off at the next
+                # speech_started.
                 self._current_output_item_id = None
                 self._current_output_audio_started_at = None
                 usage = (event.get("response") or {}).get("usage") or {}
@@ -197,18 +196,18 @@ class RealtimeConversation:
                         call_id=self.call_id,
                     )
                 except Exception:
-                    # Een DB-hiccup bij het loggen van kosten mag het gesprek
-                    # zelf nooit stilleggen — enkel loggen, doorgaan (zie ook
-                    # de bredere catch-all in agent.execute_tool).
+                    # A DB hiccup while logging costs must never stop the
+                    # conversation itself - just log and continue (see also
+                    # the broader catch-all in agent.execute_tool).
                     logger.exception("usage_log.log_usage faalde voor tenant %s", self.tenant.client_id)
-                # Eén response kan MEERDERE function-calls bevatten (parallelle
-                # tool-calls). Pas hier, na response.done, één response.create
-                # sturen om verder te gaan — niet per afgehandelde tool-call
-                # (zie _handle_function_call): anders start elke tool-call zijn
-                # eigen nieuwe response, en die audio-streams overlappen elkaar
-                # in de afspeel-wachtrij — dat klinkt als een stem/accent die
-                # midden in een zin omslaat, want het zijn letterlijk twee
-                # verschillende generaties die door elkaar gesplitst worden.
+                # One response can contain SEVERAL function calls (parallel
+                # tool calls). Only here, after response.done, send one
+                # response.create to continue - not per handled tool call
+                # (see _handle_function_call): otherwise every tool call starts
+                # its own new response, and those audio streams overlap in the
+                # playback queue - it sounds like a voice/accent switching
+                # mid-sentence, because it literally is two different
+                # generations spliced together.
                 if self._had_function_call_this_response:
                     self._had_function_call_this_response = False
                     await self._ws.send(json.dumps({"type": "response.create"}))
@@ -218,14 +217,14 @@ class RealtimeConversation:
                 yield {"type": "error", "error": event.get("error")}
 
     async def _handle_possible_interrupt(self) -> Optional[dict[str, Any]]:
-        """De klant begint te praten. Als er nog een audio-respons aan het
-        streamen was, is dat een onderbreking (barge-in): bij een WebSocket-
-        verbinding moet de client zelf conversation.item.truncate sturen zodat
-        OpenAI's eigen gespreksgeschiedenis niet denkt dat de klant de volledige
-        (nooit-afgespeelde) rest van dat antwoord gehoord heeft. We geven ook
-        een {"type": "interrupted"} event terug zodat de aanroeper (Twilio-
-        brug/browser-tool) de EIGEN afspeel-wachtrij kan legen — anders blijft
-        de staart van het oude antwoord nog doorspelen bovenop het nieuwe."""
+        """The customer starts talking. If an audio response was still
+        streaming, that is an interruption (barge-in): on a WebSocket connection
+        the client itself must send conversation.item.truncate so OpenAI's own
+        conversation history does not assume the customer heard the whole
+        (never played) rest of that answer. We also return an
+        {"type": "interrupted"} event so the caller (Twilio bridge/browser tool)
+        can empty ITS OWN playback queue - otherwise the tail of the old answer
+        keeps playing over the new one."""
         if self._current_output_item_id is None or self._current_output_audio_started_at is None:
             return None
 
@@ -279,7 +278,7 @@ class RealtimeConversation:
             "type": "conversation.item.create",
             "item": {"type": "function_call_output", "call_id": call_id, "output": json.dumps(result)},
         }))
-        # Geen response.create hier — zie response.done hierboven: dat gebeurt
-        # precies één keer per response, ook als deze response meerdere
-        # function-calls bevatte.
+        # No response.create here - see response.done above: that happens
+        # exactly once per response, even if this response contained
+        # several function calls.
         return tool_event

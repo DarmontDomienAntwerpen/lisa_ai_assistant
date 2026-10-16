@@ -1,16 +1,16 @@
-"""Dev-tool: praat met Lisa via je eigen microfoon in de browser, zonder Twilio
-of een echte telefoonoproep — puur om de stem/latency/tool-calling te horen.
+"""Dev tool: talk to Lisa through your own microphone in the browser, without
+Twilio or a real phone call - just to hear the voice/latency/tool calling.
 
-Gebruik:
+Usage:
   python dev_voice_ui.py
-  open http://localhost:8002, klik "Start gesprek", geef microfoon-toegang
+  open http://localhost:8002, click "Start gesprek", allow microphone access
 
-Gebruikt dezelfde Google Calendar-testagenda als dev_chat_ui.py (via
-dev_google_token.json — draai eerst onboarding/google_oauth_setup.py als dat
-bestand ontbreekt). Zelfde RealtimeConversation-kern (realtime_client.py)
-als een echte oproep, enkel audio_format="pcm16" i.p.v. Twilio's
-"g711_ulaw" — browsers spreken van nature PCM, geen telefonie-codec. Niet
-onderdeel van de productiecode.
+Uses the same Google Calendar test calendar as dev_chat_ui.py (via
+dev_google_token.json - run onboarding/google_oauth_setup.py first if that
+file is missing). Same RealtimeConversation core (realtime_client.py) as a
+real call, only audio_format="pcm16" instead of Twilio's "g711_ulaw" -
+browsers speak PCM natively, not a telephony codec. Not part of the
+production code.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ from app.tenants import Tenant
 logger = logging.getLogger("lisa")
 
 TOKEN_PATH = Path(__file__).resolve().parent.parent / "dev_google_token.json"
-# Dezelfde "Lisa test"-kalender als dev_chat_ui.py.
+# The same "Lisa test" calendar as dev_chat_ui.py.
 CALENDAR_ID = "c24b156dda02f2d3c8e23e8c419dbe1d0324eb46a1f92c4ac1892c56710b9774@group.calendar.google.com"
 
 

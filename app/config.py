@@ -1,6 +1,6 @@
-"""Env vars, model-keuzes, en de gedeelde Postgres connection pool.
+"""Env vars, model choices and the shared Postgres connection pool.
 
-Geen ORM: rechtstreeks asyncpg, want dit is een webhook-laag, geen webapp.
+No ORM: plain asyncpg, because this is a webhook layer, not a web app.
 """
 from __future__ import annotations
 
@@ -13,69 +13,69 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- OpenAI Realtime (voert het volledige gesprek: spraak, beslissen, tools) ---
+# --- OpenAI Realtime (runs the whole conversation: speech, decisions, tools) ---
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_REALTIME_MODEL = os.environ.get("OPENAI_REALTIME_MODEL", "gpt-realtime")
 OPENAI_REALTIME_VOICE = os.environ.get("OPENAI_REALTIME_VOICE", "marin")
-# 1.0 = normaal, range 0.25-1.5. LET OP: volgens OpenAI-community-rapporten kan
-# een afwijkende speed het accent/de taalconsistentie beïnvloeden — grondig
-# beluisteren voor dit naar productie gaat, dit werd hard bevochten deze sessie.
+# 1.0 = normal, range 0.25-1.5. NOTE: according to OpenAI community reports, a
+# non-default speed can affect the accent/language consistency - listen
+# carefully before this goes to production; this was hard-won this session.
 OPENAI_REALTIME_SPEED = float(os.environ.get("OPENAI_REALTIME_SPEED", "1.0"))
-MAX_TOOL_ITERATIONS = 6  # hard cap zodat een gesprek nooit oneindig doorloopt
+MAX_TOOL_ITERATIONS = 6  # hard cap so a conversation never runs forever
 
 # --- Database ---
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-# --- Encryptie (GDPR: gespreksdata en klantgegevens versleuteld) ---
-# Genereer met: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# --- Encryption (GDPR: conversation data and customer details encrypted) ---
+# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 CONVERSATION_ENCRYPTION_KEY = os.environ.get("CONVERSATION_ENCRYPTION_KEY", "")
 
 # --- App ---
-# PORT wordt NIET hier gelezen: Procfile/Railway geven $PORT rechtstreeks aan
-# uvicorn's --port mee op shell-niveau, dit bestand heeft het nooit nodig.
+# PORT is NOT read here: Procfile/Railway pass $PORT straight to uvicorn's
+# --port at shell level; this file never needs it.
 CONVERSATION_HISTORY_LIMIT = int(os.environ.get("CONVERSATION_HISTORY_LIMIT", "20"))
-# GDPR: expliciete retentietermijn voor gespreksdata
+# GDPR: explicit retention period for conversation data
 CONVERSATION_RETENTION_DAYS = int(os.environ.get("CONVERSATION_RETENTION_DAYS", "180"))
 
-# --- Dashboard (intern, HTTP Basic Auth — geen multi-user login, enkel voor
-# Darmont Digital zelf om per tenant calls/kosten/escalaties op te volgen) ---
+# --- Dashboard (internal, HTTP Basic Auth - no multi-user login, only for
+# Darmont Digital itself to follow calls/costs/escalations per tenant) ---
 DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "admin")
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "")
 
-# --- Prijszetting (basis + overage per gesprek boven het inbegrepen aantal) —
-# gebruikt door het dashboard om per tenant een aanbevolen factuurbedrag te
-# tonen op basis van het effectieve aantal gesprekken. Enkel een hulpmiddel/
-# schatting, geen echte facturatie-integratie. ---
+# --- Pricing (base + overage per conversation above the included number) -
+# used by the dashboard to show a suggested invoice amount per tenant based
+# on the actual number of conversations. Only an aid/estimate, not a real
+# billing integration. ---
 PRICING_BASE_EUR = float(os.environ.get("PRICING_BASE_EUR", "149"))
 PRICING_INCLUDED_CALLS = int(os.environ.get("PRICING_INCLUDED_CALLS", "150"))
 PRICING_OVERAGE_EUR = float(os.environ.get("PRICING_OVERAGE_EUR", "0.75"))
 
-# --- Twilio (telefoniekost per klant) — schatting op basis van Twilio's
-# gepubliceerde tarieven (twilio.com/en-us/voice/pricing/be, geverifieerd juli
-# 2026): inbound naar een Belgisch "mobile"-type nummer $0.0113/min + Media
-# Streams $0.0044/min = $0.0157/min gecombineerd, plus $1.25/maand huur per
-# nummer. Pas aan als je effectieve Twilio-tarief afwijkt (ander nummertype,
-# volumekorting, wisselkoers). ---
+# --- Twilio (telephony cost per customer) - estimate based on Twilio's
+# published rates (twilio.com/en-us/voice/pricing/be, checked July 2026):
+# inbound to a Belgian "mobile"-type number $0.0113/min + Media Streams
+# $0.0044/min = $0.0157/min combined, plus $1.25/month rent per number.
+# Adjust if your actual Twilio rate differs (other number type, volume
+# discount, exchange rate). ---
 TWILIO_PER_MINUTE_USD = float(os.environ.get("TWILIO_PER_MINUTE_USD", "0.0157"))
 TWILIO_MONTHLY_NUMBER_USD = float(os.environ.get("TWILIO_MONTHLY_NUMBER_USD", "1.25"))
 
-# Ruwe, vaste omrekenkoers USD->EUR — enkel voor het dashboard-totaaloverzicht
-# (om USD-gefactureerde OpenAI/Twilio-kost en EUR-vaste kosten samen te tellen
-# tot één bedrag). Geen live wisselkoers-integratie nodig voor een schatting.
+# Rough, fixed USD->EUR rate - only for the dashboard's overall total (to add
+# USD-billed OpenAI/Twilio cost and fixed EUR costs into one amount). No live
+# exchange-rate integration needed for an estimate.
 USD_TO_EUR_RATE = float(os.environ.get("USD_TO_EUR_RATE", "0.92"))
 
-# --- Vaste, gedeelde infrastructuurkost (NIET per klant op te splitsen —
-# geldt voor het hele systeem, ongeacht aantal tenants): Railway-hosting
-# (web-service + Postgres-add-on, meestal samen op één factuur) + eventuele
-# andere vaste maandkosten. Vul dit in met wat je Railway-factuur effectief
-# toont — enkel gebruikt voor het dashboard-totaaloverzicht (marge-check),
-# nooit voor de factuur van een individuele klant. ---
+# --- Fixed, shared infrastructure cost (NOT split per customer - applies to
+# the whole system, whatever the number of tenants): Railway hosting (web
+# service + Postgres add-on, usually on one invoice) + any other fixed
+# monthly costs. Fill in what your Railway invoice actually shows - used only
+# for the dashboard's overall total (margin check), never for an individual
+# customer's invoice. ---
 FIXED_MONTHLY_INFRA_COST_EUR = float(os.environ.get("FIXED_MONTHLY_INFRA_COST_EUR", "5.0"))
 
-# --- E-mail (escalatienotificaties + dagelijkse backup) — Gmail API (HTTPS),
-# NIET SMTP: Railway blokkeert uitgaande SMTP-poorten op Trial/Hobby. Eén
-# globaal Darmont Digital-verzendaccount, gedeeld door alle tenants — zie
-# onboarding/gmail_sender_setup.py en app/gmail_sender.py. ---
+# --- Email (escalation notifications + daily backup) - Gmail API (HTTPS),
+# NOT SMTP: Railway blocks outgoing SMTP ports on Trial/Hobby. One global
+# Darmont Digital sender account, shared by all tenants - see
+# onboarding/gmail_sender_setup.py and app/gmail_sender.py. ---
 GMAIL_SENDER_OAUTH_CREDENTIALS = os.environ.get("GMAIL_SENDER_OAUTH_CREDENTIALS", "")
 GMAIL_SENDER_ADDRESS = os.environ.get("GMAIL_SENDER_ADDRESS", "")
 
@@ -119,14 +119,13 @@ def decrypt_text(ciphertext: str) -> str:
 
 
 def validate_required_config() -> None:
-    """Faalt hard en luid bij het opstarten als een essentiële env var
-    ontbreekt — vóór er ooit een echte oproep binnenkomt. Gevonden via
-    code-review: zonder dit valideerden DATABASE_URL/CONVERSATION_ENCRYPTION_KEY
-    zichzelf pas lazy, bij het EERSTE echte gebruik (een DB-query, een
-    versleuteling) — en OPENAI_API_KEY nergens. Een verkeerd ingestelde
-    Railway-env-var werd zo pas zichtbaar op het moment dat een klant belde
-    (stille dode lijn), i.p.v. meteen bij de deploy zelf. Roep dit aan in
-    app/main.py's lifespan, voor de app verkeer aanvaardt."""
+    """Fails hard and loudly at startup when an essential env var is
+    missing - before a real call ever comes in. Found in code review: without
+    this, DATABASE_URL/CONVERSATION_ENCRYPTION_KEY were only validated lazily,
+    on FIRST real use (a DB query, an encryption) - and OPENAI_API_KEY
+    nowhere. A misconfigured Railway env var only showed up when a customer
+    called (a silent dead line), instead of at deploy time. Call this in
+    app/main.py's lifespan, before the app accepts traffic."""
     missing = []
     if not OPENAI_API_KEY:
         missing.append("OPENAI_API_KEY")

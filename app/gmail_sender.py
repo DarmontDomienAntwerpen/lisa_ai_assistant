@@ -1,13 +1,13 @@
-"""Verstuurt e-mail via de Gmail API (HTTPS) i.p.v. SMTP — Railway blokkeert
-uitgaande SMTP-poorten (25/465/587/2525) op het Trial/Hobby-plan, gewoon
-HTTPS-verkeer niet. Vastgesteld via een productie-`OSError: Network is
-unreachable` op een escalatiemail die lokaal wel werkte.
+"""Sends email via the Gmail API (HTTPS) instead of SMTP - Railway blocks
+outgoing SMTP ports (25/465/587/2525) on the Trial/Hobby plan, but not plain
+HTTPS traffic. Found through a production `OSError: Network is unreachable`
+on an escalation email that worked locally.
 
-Eén globaal Darmont Digital-verzendaccount (GMAIL_SENDER_OAUTH_CREDENTIALS),
-losstaand van de agenda-OAuth per klant (die blijft per-tenant, calendar-only
-scope, zie app/integrations/google_calendar.py). Nieuwe klanten hoeven dit
-nooit opnieuw op te zetten — enkel hun escalation_email invullen.
-Zie onboarding/gmail_sender_setup.py voor de eenmalige koppeling.
+One global Darmont Digital sender account (GMAIL_SENDER_OAUTH_CREDENTIALS),
+separate from the per-customer calendar OAuth (that stays per tenant,
+calendar-only scope, see app/integrations/google_calendar.py). New customers
+never need to set this up again - they only fill in their escalation_email.
+See onboarding/gmail_sender_setup.py for the one-time connection.
 """
 from __future__ import annotations
 
@@ -45,8 +45,8 @@ def send_email(
     body_text: str,
     attachment: Optional[tuple[bytes, str, str, str]] = None,
 ) -> None:
-    """Synchroon (blocking Google API-call) — aanroepers draaien dit via
-    asyncio.to_thread. attachment, indien gegeven: (payload_bytes, maintype,
+    """Synchronous (blocking Google API call) - callers run this via
+    asyncio.to_thread. attachment, if given: (payload_bytes, maintype,
     subtype, filename)."""
     message = EmailMessage()
     message["Subject"] = subject

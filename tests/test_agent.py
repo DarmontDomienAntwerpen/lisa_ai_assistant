@@ -29,11 +29,10 @@ def test_build_voice_instructions_includes_business_name_and_customer_context(te
 
 
 def test_build_voice_instructions_hides_notes_and_email_when_number_is_shared(tenant):
-    """Regressie-test (GDPR): een gedeeld nummer (gezin) kan meerdere
-    dossiers hebben. De 'beste gok' (meest recente) mag dan NIET zomaar zijn
-    e-mail/notities (kunnen gezondheidsdata bevatten) prijsgeven voor de
-    beller geïdentificeerd is — anders lekt persoon A's dossier naar een
-    gesprek met persoon B."""
+    """Regression test (GDPR): a shared number (family) can have several
+    records. The 'best guess' (most recent) must then NOT reveal its
+    email/notes (may contain health data) before the caller is identified -
+    otherwise person A's record leaks into a conversation with person B."""
     jan = {"name": "Jan Peeters", "email": "jan@test.be", "notes": "kniepijn na blessure"}
     marie = {"name": "Marie Peeters", "email": "", "notes": ""}
 
@@ -41,7 +40,7 @@ def test_build_voice_instructions_hides_notes_and_email_when_number_is_shared(te
 
     assert "kniepijn" not in instructions
     assert "jan@test.be" not in instructions
-    assert "Jan Peeters" in instructions  # naam zelf mag (nooit hardop gebruikt, zie promptregels)
+    assert "Jan Peeters" in instructions  # the name itself is allowed (never said out loud, see the prompt rules)
     assert "Marie Peeters" in instructions
     assert "gedeeld nummer" in instructions.lower()
 
@@ -54,11 +53,11 @@ def test_build_voice_instructions_shows_full_details_when_number_has_one_custome
 
 
 def test_build_voice_instructions_includes_niche_and_out_of_scope_guardrail(tenant):
-    """Regressie-test: tenant.niche moet echt in de instructies terechtkomen —
-    zonder dit weet Lisa niet dat een verzoek buiten haar sector valt (bv. een
-    kapsalon die om een garage-afspraak gevraagd wordt) en kan ze onterecht
-    check_availability/book_appointment aanroepen voor iets wat niet bij de
-    zaak hoort."""
+    """Regression test: tenant.niche must really end up in the instructions -
+    without it Lisa does not know a request falls outside her sector (e.g. a
+    hair salon asked for a garage appointment) and may wrongly call
+    check_availability/book_appointment for something that does not belong to
+    the business."""
     instructions = agent.build_voice_instructions(tenant, None, is_new=True)
     assert tenant.niche in instructions
     assert "GEEN check_availability of book_appointment aan" in instructions
@@ -68,8 +67,8 @@ def test_build_voice_instructions_includes_niche_and_out_of_scope_guardrail(tena
 
 @pytest.mark.asyncio
 async def test_cancel_appointment_succeeds_based_on_phone_number_alone(tenant, fake_pool, monkeypatch):
-    """Identiteit komt uit het telefoonnummer waarmee het gesprek binnenkomt —
-    geen naam-bevestiging meer nodig om te annuleren."""
+    """Identity comes from the phone number the call comes in on - no name
+    confirmation needed any more to cancel."""
     fake_pool.connection.fetchrow.return_value = None
     adapter = _fake_adapter([{"booking_id": "abc", "customer_name": "Jan Peeters", "start": "x", "end": "y"}])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
@@ -98,8 +97,8 @@ async def test_cancel_appointment_unknown_booking_id_is_rejected(tenant, fake_po
 
 @pytest.mark.asyncio
 async def test_book_appointment_succeeds_for_existing_customer_without_name_confirmation(tenant, fake_pool, monkeypatch):
-    """Identiteit komt uit het telefoonnummer — boeken voor een bestaande
-    klant vereist geen aparte naam-bevestiging meer."""
+    """Identity comes from the phone number - booking for an existing
+    customer needs no separate name confirmation any more."""
     adapter = _fake_adapter([], busy_periods=[])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
     monkeypatch.setattr(
@@ -118,12 +117,13 @@ async def test_book_appointment_succeeds_for_existing_customer_without_name_conf
 
 @pytest.mark.asyncio
 async def test_book_appointment_uses_caller_name_over_stored_dossier_name(tenant, fake_pool, monkeypatch):
-    """Regressie-test voor een echte bug (gevonden via live testen tegen een
-    echte agenda): een gedeeld telefoonnummer (bv. gezin) had één dossier op
-    naam van de eerste beller (Jan) — toen een TWEEDE gezinslid (Marie) zich
-    zelf voorstelde en boekte, kwam de afspraak toch op naam van Jan in de
-    agenda, want book_appointment gebruikte altijd de dossiernaam i.p.v. wat
-    de beller net zelf zei. caller_name moet nu voorrang krijgen."""
+    """Regression test for a real bug (found in live testing against a real
+    calendar): a shared phone number (e.g. a family) had one record in the
+    name of the first caller (Jan) - when a SECOND family member (Marie)
+    introduced herself and booked, the appointment still went into the
+    calendar under Jan's name, because book_appointment always used the record
+    name instead of what the caller had just said. caller_name must now take
+    precedence."""
     adapter = _fake_adapter([], busy_periods=[])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
     monkeypatch.setattr(
@@ -147,8 +147,8 @@ async def test_book_appointment_uses_caller_name_over_stored_dossier_name(tenant
 
 @pytest.mark.asyncio
 async def test_book_appointment_falls_back_to_dossier_name_without_caller_name(tenant, fake_pool, monkeypatch):
-    """Zegt de beller dit gesprek geen naam (niet nodig bij een duidelijke,
-    korte vraag), dan blijft de gekende dossiernaam gebruikt."""
+    """If the caller gives no name in this conversation (not needed for a
+    clear, short question), the known record name is still used."""
     adapter = _fake_adapter([], busy_periods=[])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
     monkeypatch.setattr(
@@ -185,9 +185,9 @@ async def test_book_appointment_passes_location_through(tenant, fake_pool, monke
 
 @pytest.mark.asyncio
 async def test_book_appointment_refuses_when_slot_already_busy(tenant, fake_pool, monkeypatch):
-    """Regressie-test: book_appointment mag nooit enkel op het model vertrouwen
-    om eerst check_availability aan te roepen. Een klant die manueel al iets
-    in de agenda zet, mag nooit dubbel geboekt worden door Lisa."""
+    """Regression test: book_appointment must never rely on the model alone
+    to call check_availability first. A customer who already put something in
+    the calendar by hand must never be double-booked by Lisa."""
     adapter = _fake_adapter([], busy_periods=[{"busy_start": "2026-07-07T13:00:00+02:00", "busy_end": "2026-07-07T13:30:00+02:00"}])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
     monkeypatch.setattr(agent, "find_or_flag_new", AsyncMock(return_value=(None, True)))
@@ -218,14 +218,13 @@ async def test_book_appointment_proceeds_when_slot_is_free(tenant, fake_pool, mo
 
 @pytest.mark.asyncio
 async def test_check_availability_converts_utc_busy_periods_to_local_time(tenant, fake_pool, monkeypatch):
-    """Regressie-test voor een echte bug (gevonden via live testen): Google's
-    freebusy-API geeft busy-tijden altijd in UTC terug, ongeacht de gevraagde
-    tijdzone. Zonder conversie naar Europe/Brussels kon het model een volledig
-    BEZET lokaal tijdslot als vrij interpreteren (in de winter 1 uur, in de
-    zomer 2 uur verschil) en dat ook zo tegen de klant zeggen — een 's zomers
-    aangevraagd 14:00-15:00 lokaal tijdslot komt overeen met 12:00-13:00 UTC in
-    Google's antwoord; zonder conversie leken die tijden voor het model niet
-    overlappend."""
+    """Regression test for a real bug (found in live testing): Google's
+    freebusy API always returns busy times in UTC, whatever time zone was
+    requested. Without conversion to Europe/Brussels the model could read a
+    fully BOOKED local slot as free (1 hour off in winter, 2 in summer) and
+    tell the customer so - a local 14:00-15:00 slot requested in summer
+    matches 12:00-13:00 UTC in Google's answer; without conversion those
+    times did not look overlapping to the model."""
     adapter = _fake_adapter([], busy_periods=[{"busy_start": "2026-07-07T12:00:00Z", "busy_end": "2026-07-07T13:00:00Z"}])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
 
@@ -242,11 +241,11 @@ async def test_check_availability_converts_utc_busy_periods_to_local_time(tenant
 
 @pytest.mark.asyncio
 async def test_create_customer_allows_second_person_on_shared_number(tenant, fake_pool, monkeypatch):
-    """Regressie-test: local_create_customer (customer_lookup.py) is zelf al
-    veilig voor een gedeeld nummer (nieuwe naam = nieuwe rij, geen
-    overschrijving) — execute_tool mag dit dus niet meer blokkeren enkel
-    omdat er al IETS op dit nummer staat. Zonder deze fix kon een tweede
-    gezinslid (bv. Katia op Darmont's nummer) nooit een eigen dossier krijgen."""
+    """Regression test: local_create_customer (customer_lookup.py) is already
+    safe for a shared number (new name = new row, no overwrite) - so
+    execute_tool must no longer block this just because SOMETHING is already
+    stored on this number. Without this fix a second family member (e.g.
+    Katia on Darmont's number) could never get a record of their own."""
     adapter = _fake_adapter([])
     monkeypatch.setattr(agent, "get_integration", lambda t, p: adapter)
     monkeypatch.setattr(

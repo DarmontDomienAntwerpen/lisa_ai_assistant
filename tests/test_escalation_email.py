@@ -55,6 +55,6 @@ async def test_send_escalation_email_never_raises_on_send_failure(tenant, monkey
 
     monkeypatch.setattr(escalation_email.gmail_sender, "send_email", _raise)
 
-    # Mag geen exception laten doorsijpelen — een mailprobleem mag het
-    # lopende klantgesprek nooit onderbreken.
+    # Must not let an exception leak through - an email problem must never
+    # interrupt the ongoing customer conversation.
     await escalation_email.send_escalation_email(tenant, "+32470000001", "Jan Peeters", "klacht", "klacht")

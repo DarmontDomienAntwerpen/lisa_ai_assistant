@@ -87,13 +87,13 @@ def test_estimated_invoice_adds_overage_beyond_included_calls(monkeypatch):
     monkeypatch.setattr(dashboard, "PRICING_INCLUDED_CALLS", 150)
     monkeypatch.setattr(dashboard, "PRICING_OVERAGE_EUR", 0.75)
 
-    # regressie-anker voor het kinesist-voorbeeld: 433 gesprekken/maand
+    # regression anchor for the physiotherapist example: 433 conversations/month
     assert dashboard._estimated_invoice_eur(433) == pytest.approx(149.0 + 283 * 0.75)
 
 
 def test_transcript_view_escapes_message_content(client, monkeypatch):
-    """Regressie-vangnet: gespreksinhoud komt van de klant (via STT) en mag
-    nooit ongefilterd als HTML gerenderd worden."""
+    """Regression safety net: conversation content comes from the customer (via
+    STT) and must never be rendered as unfiltered HTML."""
     monkeypatch.setattr(
         dashboard.conversation_store,
         "get_history",

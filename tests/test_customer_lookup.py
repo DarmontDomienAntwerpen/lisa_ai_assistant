@@ -24,9 +24,9 @@ async def test_local_lookup_customer_merges_details(fake_pool):
 
 @pytest.mark.asyncio
 async def test_local_lookup_customer_returns_most_recent_when_number_shared(fake_pool):
-    """Een gedeeld nummer (gezin) kan meerdere personen hebben — de 'beste
-    gok' voor plekken die maar één klant verwachten is de meest recente
-    (local_list_customers sorteert al DESC op created_at)."""
+    """A shared number (family) can have several people - the 'best guess'
+    for places that expect only one customer is the most recent one
+    (local_list_customers already sorts DESC on created_at)."""
     fake_pool.connection.fetch.return_value = [
         {"id": 2, "phone_number": "+32470000001", "details": encrypt_text(json.dumps({"name": "Marie"}))},
         {"id": 1, "phone_number": "+32470000001", "details": encrypt_text(json.dumps({"name": "Jan"}))},
@@ -72,9 +72,9 @@ async def test_register_new_customer_includes_phone_number(tenant, fake_pool):
 
 @pytest.mark.asyncio
 async def test_local_create_customer_inserts_new_row_for_different_name_on_same_number(fake_pool):
-    """Regressie-test: een gedeeld nummer (gezin) moet meerdere personen
-    kunnen bevatten. Jan staat al op dit nummer -- Marie (andere naam,
-    zelfde nummer) moet een NIEUWE rij worden, geen overschrijving."""
+    """Regression test: a shared number (family) must be able to hold several
+    people. Jan is already on this number -- Marie (other name, same number)
+    must become a NEW row, not an overwrite."""
     fake_pool.connection.fetch.return_value = [
         {"id": 1, "phone_number": "+32470000001", "details": encrypt_text(json.dumps({"name": "Jan"}))}
     ]
@@ -87,8 +87,8 @@ async def test_local_create_customer_inserts_new_row_for_different_name_on_same_
 
 @pytest.mark.asyncio
 async def test_local_create_customer_updates_existing_row_for_same_name(fake_pool):
-    """Belt Jan nog eens en wordt zijn intake opnieuw doorlopen (bv. e-mail
-    toegevoegd), dan wordt ZIJN rij bijgewerkt, geen dubbele rij aangemaakt."""
+    """If Jan calls again and goes through intake again (e.g. email added),
+    HIS row is updated; no duplicate row is created."""
     fake_pool.connection.fetch.return_value = [
         {"id": 1, "phone_number": "+32470000001", "details": encrypt_text(json.dumps({"name": "Jan"}))}
     ]
@@ -102,10 +102,10 @@ async def test_local_create_customer_updates_existing_row_for_same_name(fake_poo
 
 @pytest.mark.asyncio
 async def test_local_create_customer_never_overwrites_existing_nonempty_fields(fake_pool):
-    """Regressie-test (security-review): een toevallige naam-match (verkeerd
-    verstaan, of gewoon dezelfde voornaam als een andere klant) mag NOOIT
-    Jan's bestaande notities/e-mail stilzwijgend wissen of vervangen. Enkel
-    velden die nog leeg waren, mogen aangevuld worden."""
+    """Regression test (security review): a chance name match (misheard, or
+    just the same first name as another customer) must NEVER silently erase
+    or replace Jan's existing notes/email. Only fields that were still empty
+    may be filled in."""
     fake_pool.connection.fetch.return_value = [
         {"id": 1, "phone_number": "+32470000001", "details": encrypt_text(json.dumps({
             "name": "Jan", "email": "echte-jan@test.be", "notes": "kniepijn na blessure",
@@ -119,14 +119,14 @@ async def test_local_create_customer_never_overwrites_existing_nonempty_fields(f
     sql, new_details, row_id = fake_pool.connection.execute.call_args.args
     assert "UPDATE customers" in sql
     stored = json.loads(decrypt_text(new_details))
-    assert stored["email"] == "echte-jan@test.be"  # niet overschreven
-    assert stored["notes"] == "kniepijn na blessure"  # niet overschreven
+    assert stored["email"] == "echte-jan@test.be"  # not overwritten
+    assert stored["notes"] == "kniepijn na blessure"  # not overwritten
 
 
 @pytest.mark.asyncio
 async def test_local_create_customer_never_stores_plaintext_notes(fake_pool):
-    """Klantnotities kunnen gezondheidsgegevens bevatten (bv. kinebehandeling) —
-    de opgeslagen waarde mag nooit het plaintext bevatten."""
+    """Customer notes can contain health data (e.g. physiotherapy treatment) -
+    the stored value must never contain the plaintext."""
     await local_create_customer(fake_pool, "kine_janssens", "+32470000001", {"notes": "kniepijn na blessure"})
     stored_ciphertext = fake_pool.connection.execute.call_args.args[3]
     assert "kniepijn" not in stored_ciphertext

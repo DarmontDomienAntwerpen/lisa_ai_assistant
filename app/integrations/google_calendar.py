@@ -1,20 +1,20 @@
-"""Eerste agenda-adapter — live voor de eerste klant.
+"""First calendar adapter - live for the first customer.
 
-Verwacht in tenant.calendar_config, één van beide:
+Expects in tenant.calendar_config, one of the two:
 {
-  "service_account_info": {...},   # Google service account JSON (dict) — echte klanten
-  "calendar_id": "primary" of een specifiek agenda-adres
+  "service_account_info": {...},   # Google service account JSON (dict) - real customers
+  "calendar_id": "primary" or a specific calendar address
 }
-of, voor lokaal testen met een persoonlijke (niet-Workspace) agenda:
+or, for local testing with a personal (non-Workspace) calendar:
 {
   "oauth_credentials": {"token", "refresh_token", "token_uri",
                          "client_id", "client_secret", "scopes"},
   "calendar_id": "primary"
 }
-Zie onboarding/google_oauth_setup.py om oauth_credentials te genereren.
+See onboarding/google_oauth_setup.py to generate oauth_credentials.
 
-Google Calendar heeft geen klant-CRM, dus lookup/create_customer vallen terug
-op de lokale customers-tabel (customer_lookup.py).
+Google Calendar has no customer CRM, so lookup/create_customer fall back on
+the local customers table (customer_lookup.py).
 """
 from __future__ import annotations
 
@@ -31,13 +31,13 @@ from app.integrations.base import Integration, IntegrationError
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-# get_integration() bouwt per tool-call een VERSE GoogleCalendarIntegration-
-# instantie, dus caching op instance-niveau alleen zou niets opleveren.
-# Deze module-level cache hergebruikt de opgebouwde Google API-client over
-# tool-calls/gesprekken heen (per tenant) — het opbouwen van de client kost
-# meetbare tijd (credentials + discovery), en dat telt elke beurt mee in hoe
-# snel Lisa kan antwoorden na een agenda-tool-call. Credentials-objecten van
-# Google handelen token-refresh zelf al intern af, dus hergebruik is veilig.
+# get_integration() builds a FRESH GoogleCalendarIntegration instance per
+# tool call, so caching at instance level alone would gain nothing.
+# This module-level cache reuses the built Google API client across tool
+# calls/conversations (per tenant) - building the client takes measurable
+# time (credentials + discovery), and that counts every turn in how fast
+# Lisa can answer after a calendar tool call. Google's credentials objects
+# handle token refresh internally, so reuse is safe.
 _client_cache: dict[str, Any] = {}
 
 
@@ -85,17 +85,17 @@ class GoogleCalendarIntegration(Integration):
             return busy_periods
 
         busy_periods = await asyncio.to_thread(_query)
-        # Voor de eerste versie geven we de busy-periodes terug; de agent
-        # redeneert hierover om vrije slots te presenteren aan de klant.
+        # For the first version we return the busy periods; the agent
+        # reasons over them to offer free slots to the customer.
         return [{"busy_start": b["start"], "busy_end": b["end"]} for b in busy_periods]
 
     async def book(self, customer: dict[str, Any], slot: dict[str, Any], details: dict[str, Any]) -> dict[str, Any]:
         import asyncio
 
         phone_number = customer.get("phone_number", "onbekend")
-        # details["customer_name"] (wat de beller DEZE beurt zei, bepaald in
-        # agent.py) is de bron van waarheid, niet het dossier zelf — een
-        # gedeeld nummer kan meerdere mensen vertegenwoordigen.
+        # details["customer_name"] (what the caller said THIS turn, decided
+        # in agent.py) is the source of truth, not the record itself - a
+        # shared number can represent several people.
         customer_name = details.get("customer_name") or customer.get("name", "")
 
         def _insert():
@@ -106,8 +106,8 @@ class GoogleCalendarIntegration(Integration):
                 "location": details.get("location", ""),
                 "start": {"dateTime": slot["start"]},
                 "end": {"dateTime": slot["end"]},
-                # Identiteit apart van vrije tekst opslaan, zodat find_bookings()
-                # betrouwbaar kan matchen i.p.v. te zoeken in de summary/description.
+                # Store identity separately from free text, so find_bookings()
+                # can match reliably instead of searching the summary/description.
                 "extendedProperties": {
                     "private": {"phone_number": phone_number, "customer_name": customer_name}
                 },
@@ -155,9 +155,9 @@ class GoogleCalendarIntegration(Integration):
                 "phone_number": e.get("extendedProperties", {}).get("private", {}).get("phone_number", ""),
             }
             for e in events
-            # Geannuleerde afspraken blijven zichtbaar in de agenda zelf (zie
-            # cancel_booking) maar mogen niet als "actieve" boeking van deze
-            # klant terugkomen.
+            # Cancelled appointments stay visible in the calendar itself (see
+            # cancel_booking) but must not come back as an "active" booking of
+            # this customer.
             if e.get("extendedProperties", {}).get("private", {}).get("cancelled") != "true"
         ]
 
@@ -166,15 +166,15 @@ class GoogleCalendarIntegration(Integration):
 
         def _patch():
             service = self._client()
-            # Niet verwijderen: de kapper moet in de eigen agenda-app kunnen
-            # zien wie er annuleerde. "transparency: transparent" geeft het
-            # tijdslot wel weer vrij voor freebusy/nieuwe boekingen.
+            # Do not delete: the hairdresser must be able to see in their own
+            # calendar app who cancelled. "transparency: transparent" does free
+            # the slot again for freebusy/new bookings.
             body = {
                 "summary": f"GEANNULEERD — {booking.get('summary', '')}".strip(" —"),
                 "transparency": "transparent",
-                # Grijs (Google Calendar colorId "8" = Graphite) zodat een
-                # geannuleerde afspraak ook visueel meteen opvalt tussen de
-                # actieve boekingen, niet enkel via de titel-prefix.
+                # Grey (Google Calendar colorId "8" = Graphite) so a cancelled
+                # appointment also stands out visually among the active
+                # bookings, not only through the title prefix.
                 "colorId": "8",
                 "extendedProperties": {
                     "private": {

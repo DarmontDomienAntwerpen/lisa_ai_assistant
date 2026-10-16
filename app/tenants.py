@@ -1,8 +1,8 @@
-"""Tenant-lookup op basis van het binnenkomend Twilio-nummer.
+"""Tenant lookup based on the incoming Twilio number.
 
-Elk aangesloten bedrijf ("zaak") is een eigen tenant. Alles wat verschilt
-tussen bedrijven — toon, agenda-koppeling, escalatiecontact — leeft hier in
-config, nooit als if/else in agent.py of main.py.
+Every connected business ("zaak") is its own tenant. Everything that differs
+between businesses - tone, calendar connection, escalation contact - lives
+here in config, never as if/else in agent.py or main.py.
 """
 from __future__ import annotations
 
@@ -63,11 +63,11 @@ class Tenant:
     calendar_config: dict[str, Any] = field(default_factory=dict)
     system_prompt_extra: str = ""
     escalation_contact: str = ""
-    # E-mailadres van de zaakeigenaar — bij escalatie stuurt Lisa hier een mail
-    # naartoe (bellernummer + reden). Geen live call-transfer: er is vaak maar
-    # één zakennummer (dat al naar Twilio doorschakelt), dus terugbellen zou
-    # in een lus terechtkomen. Mail werkt met eender welk toestel van de
-    # eigenaar en vereist geen tweede telefoonlijn.
+    # Email address of the business owner - on escalation Lisa sends an email
+    # here (caller number + reason). No live call transfer: there is often only
+    # one business number (already forwarded to Twilio), so calling back would
+    # end up in a loop. Email works on any device the owner has and needs no
+    # second phone line.
     escalation_email: str = ""
 
     @classmethod
@@ -93,7 +93,7 @@ async def init_schema(pool: asyncpg.Pool) -> None:
 
 
 async def get_tenant_by_number(pool: asyncpg.Pool, to_number: str) -> Optional[Tenant]:
-    """Zoekt de tenant op basis van het zaaknummer dat de klant belde."""
+    """Finds the tenant by the business number the customer called."""
     async with pool.acquire() as conn:
         record = await conn.fetchrow("SELECT * FROM tenants WHERE twilio_number = $1", to_number)
     if record is None:
@@ -102,15 +102,15 @@ async def get_tenant_by_number(pool: asyncpg.Pool, to_number: str) -> Optional[T
 
 
 async def list_tenants(pool: asyncpg.Pool) -> list[Tenant]:
-    """Alle aangesloten zaken — voor het dashboard (overzicht per tenant)."""
+    """All connected businesses - for the dashboard (overview per tenant)."""
     async with pool.acquire() as conn:
         records = await conn.fetch("SELECT * FROM tenants ORDER BY business_name")
     return [Tenant.from_record(r) for r in records]
 
 
 async def get_tenant_by_client_id(pool: asyncpg.Pool, client_id: str) -> Optional[Tenant]:
-    """Zoekt de tenant op client_id — bv. voor onboarding-stappen die een
-    reeds aangemaakte tenant verder aanvullen (zie onboarding/onboard_webapp.py)."""
+    """Finds the tenant by client_id - e.g. for onboarding steps that complete
+    an already created tenant (see onboarding/onboard_webapp.py)."""
     async with pool.acquire() as conn:
         record = await conn.fetchrow("SELECT * FROM tenants WHERE client_id = $1", client_id)
     if record is None:

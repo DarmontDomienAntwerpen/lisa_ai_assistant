@@ -1,12 +1,12 @@
-"""Niche- en provider-onafhankelijke kern van het gesprek: system-instructies,
-tool-definities, en de eigenlijke tool-uitvoering.
+"""Niche- and provider-independent core of the conversation: system
+instructions, tool definitions and the actual tool execution.
 
-OpenAI Realtime API voert het gesprek zelf (spraak, beslissen, tools
-aanroepen) — zie CLAUDE.md, "Architectuur van het voice-gesprek". Dit bestand
-bevat geen LLM-provider-specifieke code: `realtime_client.py` roept
-`execute_tool()` aan zodra de Realtime-sessie een function-call doet.
-NICHE-ONAFHANKELIJK — verschillen tussen bedrijven komen uitsluitend uit
-tenant.system_prompt_extra en de gekoppelde integration-adapter.
+The OpenAI Realtime API runs the conversation itself (speech, decisions,
+tool calls) - see CLAUDE.md, "Architecture of the voice conversation". This
+file holds no LLM-provider-specific code: `realtime_client.py` calls
+`execute_tool()` as soon as the Realtime session makes a function call.
+NICHE-INDEPENDENT - differences between businesses come only from
+tenant.system_prompt_extra and the connected integration adapter.
 """
 from __future__ import annotations
 
@@ -22,17 +22,17 @@ from app.integrations.base import IntegrationError, get_integration
 
 logger = logging.getLogger("lisa")
 
-# Sluit de smalle TOCTOU-race tussen check_availability en de effectieve
-# boeking/verplaatsing (gevonden via code-review): zonder lock konden twee
-# gelijktijdige bellers naar dezelfde zaak, voor hetzelfde tijdslot, allebei
-# de beschikbaarheidscheck doorstaan voor een van beiden effectief boekte.
-# Eén lock per tenant (niet globaal) — verschillende zaken mogen wel parallel
-# boeken, enkel dezelfde agenda niet.
+# Closes the narrow TOCTOU race between check_availability and the actual
+# booking/reschedule (found in code review): without a lock, two callers to
+# the same business, for the same slot, could both pass the availability
+# check before either of them had actually booked.
+# One lock per tenant (not global) - different businesses may book in
+# parallel, only the same calendar may not.
 _booking_locks: dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
 
-# Google Calendar (en de meeste agenda-API's) weigeren timestamps zonder
-# tijdzone. Het model geeft soms een tijdstip zonder offset door — in dat
-# geval nemen we aan dat het lokale tijd is voor deze markt (BE).
+# Google Calendar (and most calendar APIs) reject timestamps without a
+# time zone. The model sometimes passes a time without an offset - in that
+# case we assume it is local time for this market (BE).
 DEFAULT_TIMEZONE = ZoneInfo("Europe/Brussels")
 
 
@@ -269,8 +269,8 @@ KLANTCONTEXT: {customer_context}
 
 {system_prompt_extra}"""
 
-# OpenAI Realtime function-calling schema (vlak: name/description/parameters
-# rechtstreeks op het tool-object, geen geneste "function"-sleutel).
+# OpenAI Realtime function-calling schema (flat: name/description/parameters
+# directly on the tool object, no nested "function" key).
 TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
@@ -412,10 +412,10 @@ def _upcoming_dates_text(now: datetime, days: int = 14) -> str:
 def _customer_context_text(customer: dict[str, Any] | None, is_new: bool, all_known: list[dict[str, Any]] | None = None) -> str:
     if is_new:
         return "Dit is een NIEUWE klant. Er is nog geen dossier — start de intake."
-    # Een gedeeld nummer (gezin, kantoor) kan meerdere personen kennen — welk
-    # dossier hier als "beste gok" doorkomt, is dan NIET betrouwbaar genoeg om
-    # e-mail/notities (kunnen gevoelige info bevatten, bv. gezondheidsdata) al
-    # bloot te geven voor de beller effectief geïdentificeerd is.
+    # A shared number (family, office) can know several people - whichever
+    # record comes through here as the "best guess" is then NOT reliable enough
+    # to reveal email/notes (may contain sensitive info, e.g. health data)
+    # before the caller has actually been identified.
     if all_known and len(all_known) > 1:
         names = ", ".join(c.get("name", "onbekend") for c in all_known)
         return (
@@ -445,22 +445,21 @@ def build_voice_instructions(
 async def execute_tool(
     tenant: Any, pool: Any, phone_number: str, tool_name: str, tool_input: dict[str, Any]
 ) -> dict[str, Any]:
-    """Voert een tool-call uit die de Realtime-sessie deed. Provider-onafhankelijk:
-    realtime_client.py roept dit aan zodra OpenAI Realtime een function-call doet."""
+    """Runs a tool call made by the Realtime session. Provider-independent:
+    realtime_client.py calls this as soon as OpenAI Realtime makes a function call."""
     try:
         adapter = get_integration(tenant, pool)
         if tool_name == "check_availability":
             start = _with_tz(datetime.fromisoformat(tool_input["start"]))
             end = _with_tz(datetime.fromisoformat(tool_input["end"]))
             busy_periods = await adapter.check_availability(start, end)
-            # Google's freebusy-API geeft busy-tijden altijd in UTC terug,
-            # ongeacht de tijdzone van de aanvraag — maar het model redeneert
-            # overal elders in Europe/Brussels lokale tijd (current_datetime,
-            # KALENDER-lijst, de tijden die het zelf doorgeeft). Zonder
-            # conversie hier kan een volledig bezet lokaal tijdslot er voor
-            # het model (foutief) als vrij uitzien, met een 1-2 uur verschil
-            # afhankelijk van winter-/zomertijd — dit NOOIT aan het model zelf
-            # laten omrekenen, dat gaat te vaak fout.
+            # Google's freebusy API always returns busy times in UTC,
+            # whatever the request's time zone - but everywhere else the model
+            # reasons in Europe/Brussels local time (current_datetime, the
+            # CALENDAR list, the times it passes itself). Without converting
+            # here, a fully booked local slot can (wrongly) look free to the
+            # model, off by 1-2 hours depending on winter/summer time - NEVER
+            # leave this conversion to the model, it gets it wrong too often.
             local_busy_periods = [
                 {
                     "busy_start": datetime.fromisoformat(b["busy_start"]).astimezone(DEFAULT_TIMEZONE).isoformat(),
@@ -470,21 +469,21 @@ async def execute_tool(
             ]
             return {"busy_periods": local_busy_periods, "fully_free": len(local_busy_periods) == 0}
         if tool_name == "book_appointment":
-            # Telefoonnummer bepaalt WELK dossier opgezocht wordt, maar niet
-            # noodzakelijk WIE er nu belt (gedeelde lijn, bv. gezin) — zie
-            # CLAUDE.md/agent-prompt. caller_name (wat de beller deze beurt
-            # zelf zei) heeft daarom voorrang op de opgeslagen dossiernaam.
+            # The phone number decides WHICH record is looked up, but not
+            # necessarily WHO is calling now (shared line, e.g. a family) - see
+            # CLAUDE.md/agent prompt. caller_name (what the caller said this
+            # turn) therefore takes precedence over the stored record name.
             customer, _ = await find_or_flag_new(tenant, pool, phone_number)
             start = _with_tz(datetime.fromisoformat(tool_input["start"]))
             end = _with_tz(datetime.fromisoformat(tool_input["end"]))
-            # Lock rond check+boek (gevonden via code-review): zonder dit konden
-            # twee gelijktijdige bellers voor dezelfde zaak/hetzelfde tijdslot
-            # allebei de check doorstaan voor een van beiden effectief boekte.
+            # Lock around check+book (found in code review): without it, two
+            # callers for the same business/slot could both pass the check
+            # before either of them had actually booked.
             async with _booking_locks[tenant.client_id]:
-                # Nooit enkel op het model vertrouwen om eerst check_availability
-                # aan te roepen — dat is instructie, geen garantie. Dubbel boeken
-                # op een bezet tijdslot is een productieprobleem, dus wordt hier
-                # afgedwongen, niet enkel geadviseerd.
+                # Never rely on the model alone to call check_availability
+                # first - that is an instruction, not a guarantee. Double-booking
+                # a taken slot is a production problem, so it is enforced here,
+                # not merely advised.
                 busy_periods = await adapter.check_availability(start, end)
                 if busy_periods:
                     return {
@@ -492,12 +491,13 @@ async def execute_tool(
                         "busy_periods": busy_periods,
                     }
                 slot = {"start": _iso_with_tz(tool_input["start"]), "end": _iso_with_tz(tool_input["end"])}
-                # Klantnaam + telefoonnummer altijd deterministisch in de titel, niet
-                # afhankelijk van of het model daaraan denkt — zo ziet de kapper in
-                # zijn/haar eigen agenda-app altijd meteen wie er komt en hoe die te
-                # bereiken is, zonder in verborgen metadata te moeten kijken.
-                # caller_name (wat deze beller NU zei) gaat voor de dossiernaam —
-                # anders eindigt de boeking van gezinslid B op naam van gezinslid A.
+                # Customer name + phone number always go into the title
+                # deterministically, not depending on whether the model remembers -
+                # so the hairdresser sees in their own calendar app straight away
+                # who is coming and how to reach them, without digging in hidden
+                # metadata. caller_name (what this caller said NOW) wins over the
+                # record name - otherwise family member B's booking ends up under
+                # family member A's name.
                 customer_name = tool_input.get("caller_name") or (customer or {}).get("name") or "Onbekende klant"
                 details = {
                     "summary": f"{tool_input['summary']} — {customer_name} ({phone_number})",
@@ -525,23 +525,22 @@ async def execute_tool(
             else:
                 new_start = _with_tz(datetime.fromisoformat(tool_input["new_start"]))
                 new_end = _with_tz(datetime.fromisoformat(tool_input["new_end"]))
-                # Zelfde lock als bij book_appointment — en gevonden via
-                # code-review: reschedule checkte de agenda nooit vooraf (in
-                # tegenstelling tot book_appointment), een klant kon zo
-                # verplaatsen naar een tijdslot dat al bezet was.
+                # Same lock as book_appointment - and found in code review:
+                # reschedule never checked the calendar first (unlike
+                # book_appointment), so a customer could move to a slot that
+                # was already taken.
                 async with _booking_locks[tenant.client_id]:
                     busy_periods = await adapter.check_availability(new_start, new_end)
-                    # Gevonden via live-test: een klant die zijn afspraak
-                    # licht verschuift/verlengt (bv. 30 min later, overlapt
-                    # dus met zichzelf) werd onterecht geweigerd, want de
-                    # afspraak zag zijn EIGEN huidige tijdslot als "bezet".
-                    # Eerste poging (exacte match wegfilteren) werkte niet:
-                    # Google's freebusy-API geeft het bezette stuk GEKNIPT
-                    # naar het opgevraagde tijdsvak terug, niet de volledige
-                    # originele afspraak — dus nooit een exacte match. Filter
-                    # daarom elk teruggegeven "bezet"-stuk dat volledig BINNEN
-                    # het eigen originele tijdslot valt (dat kan enkel de
-                    # eigen afspraak zelf zijn, geknipt).
+                    # Found in live testing: a customer shifting/extending their
+                    # appointment slightly (e.g. 30 min later, so overlapping
+                    # itself) was wrongly refused, because the appointment saw
+                    # its OWN current slot as "busy".
+                    # First attempt (filtering out an exact match) did not work:
+                    # Google's freebusy API returns the busy part CLIPPED to the
+                    # requested window, not the full original appointment - so
+                    # never an exact match. Instead, filter every returned "busy"
+                    # piece that lies fully INSIDE the original slot (that can
+                    # only be the appointment itself, clipped).
                     own_start = _with_tz(datetime.fromisoformat(booking["start"])) if booking.get("start") else None
                     own_end = _with_tz(datetime.fromisoformat(booking["end"])) if booking.get("end") else None
                     busy_periods = [
@@ -561,11 +560,11 @@ async def execute_tool(
                     result = await adapter.reschedule_booking(booking, new_slot, customer)
             return {**result, "customer_name": booking.get("customer_name", "")}
         if tool_name == "create_customer":
-            # local_create_customer (customer_lookup.py) is zelf al veilig voor
-            # een gedeeld nummer: een nieuwe naam wordt een nieuwe rij, dezelfde
-            # naam werkt de bestaande rij bij — geen overschrijf-risico meer,
-            # dus geen blokkerende guard hier nodig (een gezinslid B mag een
-            # eigen dossier krijgen op hetzelfde nummer als gezinslid A).
+            # local_create_customer (customer_lookup.py) is already safe for a
+            # shared number: a new name becomes a new row, the same name updates
+            # the existing row - no overwrite risk any more, so no blocking guard
+            # is needed here (family member B may get their own record on the
+            # same number as family member A).
             details = {"name": tool_input["name"], "email": tool_input.get("email", ""), "notes": tool_input.get("notes", "")}
             result = await register_new_customer(tenant, pool, phone_number, details)
             return result
@@ -579,19 +578,19 @@ async def execute_tool(
             }
         return {"error": f"Onbekende tool: {tool_name}"}
     except IntegrationError as exc:
-        # Gevonden via monitoring-review: dit werd nergens gelogd — een echte
-        # storing bij de agenda-koppeling (verlopen token, quota, uitval) was
-        # zo onzichtbaar server-side, enkel af te leiden uit een transcript.
+        # Found in monitoring review: this was never logged - a real outage
+        # of the calendar connection (expired token, quota, downtime) was
+        # invisible server-side, only to be inferred from a transcript.
         logger.error("Agenda-koppeling faalde (tool=%s, tenant=%s): %s", tool_name, tenant.client_id, exc)
         return {"error": str(exc)}
     except Exception:
-        # Kritieke vangnet (gevonden via code-review): zonder deze catch-all
-        # doodde ELKE onverwachte fout hier (bv. het model geeft een niet-ISO
-        # datum door, of een tool_input mist een verplicht veld) stilzwijgend
-        # de audio-relay — de klant hoorde daarna niets meer, terwijl de call
-        # "verbonden" bleef. Nooit een stille faalstand (CLAUDE.md-regel 4):
-        # altijd een nette fout teruggeven zodat het model dit hardop aan de
-        # klant kan uitleggen i.p.v. gewoon te verdwijnen.
+        # Critical safety net (found in code review): without this catch-all,
+        # ANY unexpected error here (e.g. the model passes a non-ISO date, or a
+        # tool_input lacks a required field) silently killed the audio relay -
+        # the customer heard nothing more while the call stayed "connected".
+        # Never a silent failure (CLAUDE.md rule 4): always return a clean error
+        # so the model can explain it out loud to the customer instead of just
+        # going quiet.
         logger.exception("Onverwachte fout in execute_tool (tool=%s, tenant=%s)", tool_name, tenant.client_id)
         return {
             "error": "Er ging iets mis bij het verwerken van dit verzoek — probeer het anders te formuleren of geef door aan een medewerker.",

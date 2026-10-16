@@ -1,16 +1,16 @@
-"""Dagelijkse database-backup: dumpt alle tabellen als JSON en mailt dat als
-bijlage naar Darmont Digital zelf, via de Gmail API (app/gmail_sender.py) —
-niet SMTP, want Railway blokkeert uitgaande SMTP-poorten op het Trial/Hobby-
-plan. Puur Python (geen afhankelijkheid van een `pg_dump`-binary die mogelijk
-niet aanwezig is in de Railway-runtime).
+"""Daily database backup: dumps every table as JSON and emails it as an
+attachment to Darmont Digital itself, via the Gmail API (app/gmail_sender.py)
+- not SMTP, because Railway blocks outgoing SMTP ports on the Trial/Hobby
+plan. Pure Python (no dependency on a `pg_dump` binary that may be missing
+from the Railway runtime).
 
-Beschermt tegen schijf-/volume-defect of per-ongeluk-verwijderen van de
-Postgres-service — een gewone process-crash heeft dit NIET nodig (Postgres
-herstelt zichzelf via de eigen write-ahead-log), dit is enkel voor het
-scenario waarbij de data zelf verloren gaat.
+Protects against disk/volume failure or accidental deletion of the Postgres
+service - an ordinary process crash does NOT need this (Postgres recovers
+itself via its write-ahead log); this is only for the case where the data
+itself is lost.
 
-Entrypoint voor een Railway cron-service, analoog aan de GDPR-retentiepurge
-in conversation_store.py: `python -m app.backup_db`, dagelijks.
+Entrypoint for a Railway cron service, like the GDPR retention purge in
+conversation_store.py: `python -m app.backup_db`, daily.
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ async def _dump_all_tables(pool) -> dict:
     dump = {}
     async with pool.acquire() as conn:
         for table in TABLES:
-            rows = await conn.fetch(f"SELECT * FROM {table}")  # noqa: S608 — vaste, interne tabellenlijst, geen user input
+            rows = await conn.fetch(f"SELECT * FROM {table}")  # noqa: S608 - fixed, internal table list, no user input
             dump[table] = [dict(r) for r in rows]
     return dump
 
@@ -61,7 +61,7 @@ async def _run_backup() -> None:
 
     await asyncio.to_thread(
         gmail_sender.send_email,
-        GMAIL_SENDER_ADDRESS,  # naar jezelf — geen apart backup-mailadres nodig
+        GMAIL_SENDER_ADDRESS,  # to yourself - no separate backup address needed
         f"Lisa: dagelijkse database-backup — {now.strftime('%Y-%m-%d')}",
         f"Automatische backup, rijen per tabel: {row_counts}",
         (payload, "application", "json", filename),

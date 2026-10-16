@@ -1,10 +1,11 @@
-"""TwiML voor inkomende oproepen.
+"""TwiML for incoming calls.
 
-Call-flow: klant belt het zaaknummer → Twilio stuurt de audio via een Media
-Stream (WebSocket) naar /media-stream, waar OpenAI Realtime het volledige
-gesprek voert (spraak, beslissen, tools — zie voice_stream.py/agent.py,
-geen apart brain-model, zie CLAUDE.md "Architectuur van het voice-gesprek").
-Geen dial-naar-mens-eerst meer: Lisa neemt elke oproep meteen zelf aan.
+Call flow: the customer calls the business number -> Twilio sends the audio
+via a Media Stream (WebSocket) to /media-stream, where OpenAI Realtime runs
+the whole conversation (speech, decisions, tools - see voice_stream.py/
+agent.py, no separate brain model, see CLAUDE.md "Architecture of the voice
+conversation"). No dial-a-human-first any more: Lisa answers every call
+herself right away.
 """
 from __future__ import annotations
 

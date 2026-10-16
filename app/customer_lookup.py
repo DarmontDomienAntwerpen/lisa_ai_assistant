@@ -1,12 +1,12 @@
-"""Nieuw/bestaand-check. Roept de juiste integration-adapter aan.
+"""New/existing check. Calls the right integration adapter.
 
-Adapters die zelf geen CRM hebben (Google Calendar, "none") vallen terug op
-de lokale `customers`-tabel hieronder — dat is de enige plek waar dat schema
-leeft, zodat er geen duplicatie ontstaat tussen adapters.
+Adapters without a CRM of their own (Google Calendar, "none") fall back on
+the local `customers` table below - the only place that schema lives, so
+there is no duplication between adapters.
 
-GDPR: details wordt versleuteld opgeslagen (config.encrypt_text/decrypt_text)
-— klantnotities kunnen gezondheidsgegevens bevatten (bv. een kinebehandeling).
-Daarom TEXT in plaats van JSONB: versleutelde data is geen geldige JSON meer.
+GDPR: details is stored encrypted (config.encrypt_text/decrypt_text) -
+customer notes can contain health data (e.g. a physiotherapy treatment).
+Hence TEXT instead of JSONB: encrypted data is no longer valid JSON.
 """
 from __future__ import annotations
 
@@ -44,11 +44,10 @@ async def init_schema(pool: asyncpg.Pool) -> None:
 
 
 async def local_list_customers(pool: asyncpg.Pool, tenant_id: str, phone_number: str) -> list[dict[str, Any]]:
-    """Alle gekende personen op dit nummer, meest recent eerst — een gedeeld
-    nummer (gezin, kantoor) kan er meerdere hebben. Elk record bevat een
-    interne "_id" (rij-id) zodat local_create_customer een bestaande rij kan
-    bijwerken zonder op de (niet-deterministisch versleutelde) details te
-    moeten matchen."""
+    """Every known person on this number, most recent first - a shared
+    number (family, office) can have several. Each record carries an internal
+    "_id" (row id) so local_create_customer can update an existing row without
+    matching on the (non-deterministically encrypted) details."""
     async with pool.acquire() as conn:
         records = await conn.fetch(
             "SELECT id, phone_number, details FROM customers WHERE tenant_id = $1 AND phone_number = $2 ORDER BY created_at DESC",
@@ -62,9 +61,9 @@ async def local_list_customers(pool: asyncpg.Pool, tenant_id: str, phone_number:
 
 
 async def local_lookup_customer(pool: asyncpg.Pool, tenant_id: str, phone_number: str) -> Optional[dict[str, Any]]:
-    """Standaard/beste-gok-klant voor dit nummer (meest recent gekend) — voor
-    plekken die maar één klant verwachten (bv. de "nieuw of bestaand"-check).
-    Gebruik local_list_customers() als alle namen op dit nummer nodig zijn."""
+    """Default/best-guess customer for this number (most recently known) - for
+    places that expect only one customer (e.g. the "new or existing" check).
+    Use local_list_customers() when all names on this number are needed."""
     customers = await local_list_customers(pool, tenant_id, phone_number)
     if not customers:
         return None
@@ -72,16 +71,15 @@ async def local_lookup_customer(pool: asyncpg.Pool, tenant_id: str, phone_number
 
 
 async def local_create_customer(pool: asyncpg.Pool, tenant_id: str, phone_number: str, details: dict[str, Any]) -> dict[str, Any]:
-    """Voegt een nieuw persoon toe op dit nummer, of vult aan als er al een
-    rij met exact dezelfde naam bestaat (voorkomt onnodige duplicaten bij een
-    herhaalde intake van dezelfde persoon).
+    """Adds a new person on this number, or fills in a row that already has
+    exactly the same name (avoids needless duplicates when the same person
+    goes through intake again).
 
-    VEILIGE MERGE, geen overschrijving: enkel velden die nog LEEG staan in
-    het bestaande dossier worden ingevuld met de nieuwe waarde. Gevonden via
-    security-review: een blinde overschrijving zou een toevallige naam-match
-    (verkeerd verstaan, of gewoon een veelvoorkomende naam) het bestaande
-    e-mailadres/notities (kunnen gezondheidsdata bevatten) laten wissen of
-    vervangen door verkeerde/nieuwe info, zonder enige verificatie."""
+    SAFE MERGE, no overwrite: only fields still EMPTY in the existing record
+    are filled with the new value. Found in security review: a blind
+    overwrite would let a chance name match (misheard, or just a common name)
+    erase the existing email/notes (may contain health data) or replace them
+    with wrong/new info, without any verification."""
     new_name = (details.get("name") or "").strip().lower()
     existing = await local_list_customers(pool, tenant_id, phone_number)
     match = next((c for c in existing if (c.get("name") or "").strip().lower() == new_name), None)
@@ -109,10 +107,10 @@ async def local_create_customer(pool: asyncpg.Pool, tenant_id: str, phone_number
 
 
 async def find_or_flag_new(tenant: Any, pool: asyncpg.Pool, phone_number: str) -> tuple[Optional[dict[str, Any]], bool]:
-    """Eerste vraag van elk gesprek: bestaande of nieuwe klant?
+    """First question of every conversation: existing or new customer?
 
-    Geeft (klantgegevens, is_nieuw) terug. is_nieuw is True als de klant
-    onbekend is in het gekoppelde systeem.
+    Returns (customer details, is_new). is_new is True when the customer
+    is unknown in the connected system.
     """
     adapter = get_integration(tenant, pool)
     customer = await adapter.lookup_customer(phone_number)

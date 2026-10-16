@@ -10,8 +10,8 @@ from app.realtime_client import RealtimeConversation
 
 
 class FakeWS:
-    """Minimalistische OpenAI Realtime-websocket-mock: voorgeprogrammeerde
-    inkomende events, en een log van wat de code er zelf naartoe stuurde."""
+    """Minimal OpenAI Realtime websocket mock: preprogrammed incoming events,
+    and a log of what the code itself sent to it."""
 
     def __init__(self, incoming=None):
         self._incoming = list(incoming or [])
@@ -58,9 +58,9 @@ async def test_handle_function_call_escalates_and_sends_output(tenant, fake_pool
 
     assert event == {"type": "escalated", "escalation_type": "klacht", "reason": "klacht", "customer_name": ""}
     assert conv.escalated is True
-    # Geen response.create hier — dat gebeurt centraal op response.done (zie
+    # No response.create here - that happens centrally on response.done (see
     # test_events_sends_exactly_one_response_create_for_multiple_tool_calls),
-    # anders overlappen meerdere tool-calls in dezelfde beurt elkaars audio.
+    # otherwise several tool calls in the same turn overlap each other's audio.
     sent_types = [m["type"] for m in conv._ws.sent]
     assert sent_types == ["conversation.item.create"]
     assert conv._ws.sent[0]["item"]["call_id"] == "c1"
@@ -69,10 +69,10 @@ async def test_handle_function_call_escalates_and_sends_output(tenant, fake_pool
 
 @pytest.mark.asyncio
 async def test_handle_function_call_escalates_with_customer_name(tenant, fake_pool, monkeypatch):
-    """Regressie-test: als Lisa de naam al kent en meegeeft (bv. een nieuwe
-    klant die meteen escaleert zonder ooit een afspraak te boeken), moet die
-    naam doorstromen naar het escalated-event — anders weet de medewerker in
-    de escalatiemail niet wie terug te bellen."""
+    """Regression test: when Lisa already knows the name and passes it (e.g. a
+    new customer who escalates right away without ever booking), that name
+    must flow into the escalated event - otherwise the staff member reading
+    the escalation email does not know whom to call back."""
     monkeypatch.setattr(agent, "get_integration", lambda t, p: _fake_adapter())
     conv = RealtimeConversation(tenant, fake_pool, "+32470000001", "voice", audio=True)
     conv._ws = FakeWS()
@@ -132,12 +132,12 @@ async def test_handle_function_call_caps_at_max_tool_iterations(tenant, fake_poo
 
 @pytest.mark.asyncio
 async def test_events_sends_exactly_one_response_create_for_multiple_tool_calls(tenant, fake_pool, monkeypatch):
-    """Regressie-test voor een echte bug: als één beurt meerdere function-calls
-    bevat (bv. check_availability + book_appointment), mag er maar ÉÉN
-    response.create verstuurd worden na response.done — niet één per
-    tool-call. Anders start elke tool-call een eigen overlappende response,
-    en hun audio interleaved in de afspeel-wachtrij (klinkt als een stem/
-    accent die abrupt omslaat midden in een zin)."""
+    """Regression test for a real bug: when one turn contains several function
+    calls (e.g. check_availability + book_appointment), only ONE
+    response.create may be sent after response.done - not one per tool call.
+    Otherwise every tool call starts its own overlapping response, and their
+    audio interleaves in the playback queue (sounds like a voice/accent
+    switching abruptly mid-sentence)."""
     tool_mock = AsyncMock(return_value={"busy_periods": [], "fully_free": True})
     monkeypatch.setattr(agent, "execute_tool", tool_mock)
     monkeypatch.setattr(usage_log, "log_usage", AsyncMock())
@@ -183,13 +183,13 @@ async def test_events_persists_user_transcript_and_logs_usage(tenant, fake_pool,
 
 @pytest.mark.asyncio
 async def test_interrupt_during_audio_sends_truncate_and_yields_interrupted(tenant, fake_pool):
-    """Regressie-test voor een echte bug: bij een WebSocket-verbinding (i.t.t.
-    WebRTC) moet de CLIENT zelf de audio-afspeel-wachtrij opschonen bij een
-    onderbreking — zonder dit blijft de staart van het oude antwoord nog
-    doorspelen bovenop het nieuwe, wat klinkt als een stem die abrupt
-    verandert. Verwacht: conversation.item.truncate wordt gestuurd, en de
-    aanroeper krijgt een {"type": "interrupted"} event om de eigen
-    afspeel-wachtrij (Twilio-clear/browser-buffer) te legen."""
+    """Regression test for a real bug: on a WebSocket connection (unlike
+    WebRTC) the CLIENT itself must clean up the audio playback queue on an
+    interruption - without this the tail of the old answer keeps playing over
+    the new one, which sounds like a voice that changes abruptly. Expected:
+    conversation.item.truncate is sent, and the caller gets an
+    {"type": "interrupted"} event to empty its own playback queue
+    (Twilio clear/browser buffer)."""
     conv = RealtimeConversation(tenant, fake_pool, "+32470000001", "voice", audio=True)
     conv._ws = FakeWS([
         json.dumps({"type": "response.output_audio.delta", "item_id": "item_1", "delta": "AAAA"}),
@@ -208,9 +208,9 @@ async def test_interrupt_during_audio_sends_truncate_and_yields_interrupted(tena
 
 @pytest.mark.asyncio
 async def test_speech_started_without_active_audio_does_not_send_truncate(tenant, fake_pool):
-    """Als de klant begint te praten zonder dat Lisa nog audio aan het
-    streamen was (het normale geval — geen onderbreking), mag er geen
-    conversation.item.truncate gestuurd worden."""
+    """When the customer starts talking while Lisa was not streaming audio
+    (the normal case - no interruption), no conversation.item.truncate may
+    be sent."""
     conv = RealtimeConversation(tenant, fake_pool, "+32470000001", "voice", audio=True)
     conv._ws = FakeWS([json.dumps({"type": "input_audio_buffer.speech_started"})])
 

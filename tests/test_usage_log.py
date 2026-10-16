@@ -30,14 +30,14 @@ def test_calculate_cost_usd_unknown_model_defaults_to_zero():
 
 
 def test_calculate_cost_usd_cached_input_is_much_cheaper():
-    """Regressie-test voor een echte overschatting: een Realtime-sessie stuurt
-    bij elke beurt de volledige audio-geschiedenis opnieuw als input, maar
-    OpenAI cachet dat automatisch tegen een ~80x lager tarief. Zonder dit te
-    verrekenen leek een kort testgesprek van 12 beurten $1.38 te kosten,
-    terwijl een groot deel daarvan gecached (en dus veel goedkoper) was."""
+    """Regression test for a real overestimate: a Realtime session resends the
+    full audio history as input on every turn, but OpenAI caches it
+    automatically at a ~80x lower rate. Without accounting for this, a short
+    12-turn test conversation seemed to cost $1.38, while much of it was
+    cached (and so far cheaper)."""
     fully_fresh = calculate_cost_usd(OPENAI_REALTIME_MODEL, 10_000, 0, cached_input_tokens=0)
     fully_cached = calculate_cost_usd(OPENAI_REALTIME_MODEL, 10_000, 0, cached_input_tokens=10_000)
-    assert fully_cached < fully_fresh / 10  # cache-tarief ($0.40/1M) << vol tarief ($32/1M)
+    assert fully_cached < fully_fresh / 10  # cache rate ($0.40/1M) << full rate ($32/1M)
 
 
 @pytest.mark.asyncio
@@ -57,9 +57,9 @@ async def test_log_call_start_inserts_into_calls_table_and_returns_id(fake_pool)
 
 @pytest.mark.asyncio
 async def test_get_tenant_usage_summary_merges_usage_and_call_stats(fake_pool):
-    """Regressie-test: usage_log logt per gespreksbeurt (meerdere rijen per
-    call), calls logt één rij per opgezette sessie — het dashboard heeft
-    beide nodig (call_count komt uit calls, niet uit usage_log)."""
+    """Regression test: usage_log logs per turn (several rows per call),
+    calls logs one row per session set up - the dashboard needs both
+    (call_count comes from calls, not from usage_log)."""
     fake_pool.connection.fetchrow.side_effect = [
         {"conversation_turns": 5, "total_input_tokens": 100, "total_output_tokens": 200, "total_cost_usd": 0.05, "escalations": 1},
         {"call_count": 2, "last_call_at": None, "total_duration_seconds": 120},
@@ -70,11 +70,11 @@ async def test_get_tenant_usage_summary_merges_usage_and_call_stats(fake_pool):
 
 
 def test_twilio_cost_usd_accepts_decimal_duration_from_asyncpg():
-    """Regressie-test voor een echte productie-crash: asyncpg geeft
-    EXTRACT(EPOCH FROM ...) terug als decimal.Decimal, niet float — een kale
-    `duration_seconds / 60 * TWILIO_PER_MINUTE_USD` crasht daarop
+    """Regression test for a real production crash: asyncpg returns
+    EXTRACT(EPOCH FROM ...) as decimal.Decimal, not float - a bare
+    `duration_seconds / 60 * TWILIO_PER_MINUTE_USD` crashes on that
     (TypeError: unsupported operand type(s) for *: 'Decimal' and 'float'),
-    wat de tenant-detailpagina in productie liet crashen (HTTP 500)."""
+    which crashed the tenant detail page in production (HTTP 500)."""
     cost = twilio_cost_usd(Decimal("125.500000"))
     assert isinstance(cost, float)
     assert cost > 0
@@ -82,10 +82,10 @@ def test_twilio_cost_usd_accepts_decimal_duration_from_asyncpg():
 
 @pytest.mark.asyncio
 async def test_get_tenant_usage_summary_handles_decimal_from_real_db_types(fake_pool):
-    """Zelfde regressie als hierboven, maar via het volledige pad: de
-    calls_record die uit een echte Postgres-query komt bevat Decimal voor
-    total_duration_seconds — get_tenant_usage_summary mag daar niet op
-    crashen bij het berekenen van total_twilio_cost_usd."""
+    """Same regression as above, but via the full path: the calls_record
+    coming from a real Postgres query holds Decimal for
+    total_duration_seconds - get_tenant_usage_summary must not crash on that
+    when computing total_twilio_cost_usd."""
     fake_pool.connection.fetchrow.side_effect = [
         {"conversation_turns": 1, "total_input_tokens": 10, "total_output_tokens": 10, "total_cost_usd": Decimal("0.01"), "escalations": 0},
         {"call_count": 1, "last_call_at": None, "total_duration_seconds": Decimal("90.000000")},
@@ -96,9 +96,9 @@ async def test_get_tenant_usage_summary_handles_decimal_from_real_db_types(fake_
 
 @pytest.mark.asyncio
 async def test_get_calls_with_cost_breakdown_handles_decimal_from_real_db_types(fake_pool):
-    """Zelfde regressie voor de per-call breakdown die het dashboard uitklapt
-    — c.ended_at - c.started_at komt via EXTRACT(EPOCH ...) ook als Decimal
-    terug uit een echte Postgres-rij."""
+    """Same regression for the per-call breakdown the dashboard expands -
+    c.ended_at - c.started_at also comes back as Decimal from a real Postgres
+    row via EXTRACT(EPOCH ...)."""
     fake_pool.connection.fetch.return_value = [
         {
             "call_id": 1,

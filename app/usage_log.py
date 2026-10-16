@@ -1,18 +1,17 @@
-"""Tokens, kosten, kanaal, escalaties — per tenant, vanaf dag 1.
+"""Tokens, costs, channel, escalations - per tenant, from day 1.
 
-Geen dashboard nu, wel de data ervoor. Prijzen hieronder zijn USD per 1M
-tokens en moeten in sync blijven met de actuele OpenAI Realtime-pricing.
+No dashboard now, but the data for it. Prices below are USD per 1M tokens
+and must stay in sync with current OpenAI Realtime pricing.
 
-LET OP (bewuste vereenvoudiging): OpenAI Realtime rapporteert audio- en
-tekst-tokens apart (met elk een eigen, sterk verschillend tarief — audio is
-een veelvoud van tekst), maar we loggen hier enkel de gecombineerde
-input/output-totalen die `response.done` teruggeeft. cost_usd hieronder is
-dus een indicatie op basis van een geblend audio-tarief, geen exacte
-facturatie. Wel al verrekend: automatische prompt-caching (OpenAI hergebruikt
-de audio-geschiedenis van eerdere beurten in eenzelfde gesprek tegen een veel
-lager tarief) — zonder dat mee te tellen overschat je de kost fors, want een
-Realtime-sessie stuurt bij elke beurt de VOLLEDIGE audio-geschiedenis tot dan
-toe opnieuw mee als input.
+NOTE (deliberate simplification): OpenAI Realtime reports audio and text
+tokens separately (each with its own, very different rate - audio is a
+multiple of text), but here we only log the combined input/output totals
+that `response.done` returns. cost_usd below is therefore an indication
+based on a blended audio rate, not exact billing. Already accounted for:
+automatic prompt caching (OpenAI reuses the audio history of earlier turns
+in the same conversation at a much lower rate) - without it you overestimate
+the cost by a lot, because a Realtime session resends the FULL audio
+history so far as input on every turn.
 """
 from __future__ import annotations
 
@@ -67,16 +66,17 @@ CREATE INDEX IF NOT EXISTS idx_usage_log_call ON usage_log (call_id);
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS ended_at TIMESTAMPTZ;
 """
 
-# USD per 1M tokens (input vers, output) — geblend audio-tarief, zie docstring
-# hierboven. Hardcoded per model-naam (niet enkel het huidige OPENAI_REALTIME_MODEL)
-# zodat historische rijen correct geprijsd blijven ook als je van model wisselt.
+# USD per 1M tokens (fresh input, output) - blended audio rate, see the
+# docstring above. Hardcoded per model name (not only the current
+# OPENAI_REALTIME_MODEL) so historical rows stay correctly priced after a
+# model switch.
 PRICING_PER_MILLION_TOKENS: dict[str, tuple[float, float]] = {
     "gpt-realtime": (32.0, 64.0),
     "gpt-realtime-2": (32.0, 64.0),
     "gpt-realtime-2.1": (32.0, 64.0),
-    "gpt-realtime-2.1-mini": (10.0, 20.0),  # ~3.2x goedkoper dan het volle model
+    "gpt-realtime-2.1-mini": (10.0, 20.0),  # ~3.2x cheaper than the full model
 }
-# USD per 1M CACHED input-tokens — apart, veel lager tarief dan vers.
+# USD per 1M CACHED input tokens - a separate rate, much lower than fresh.
 CACHED_INPUT_PRICING_PER_MILLION_TOKENS: dict[str, float] = {
     "gpt-realtime": 0.40,
     "gpt-realtime-2": 0.40,
@@ -91,21 +91,21 @@ async def init_schema(pool: asyncpg.Pool) -> None:
 
 
 def twilio_cost_usd(duration_seconds: Optional[float]) -> float:
-    """Schatting van de telefoniekost (inbound + Media Streams gecombineerd
-    tarief) voor één call — 0 zolang de duur nog niet gekend is (call loopt
-    nog, of het proces crashte voor ended_at gezet werd). asyncpg geeft
-    EXTRACT(EPOCH FROM ...) soms terug als Decimal i.p.v. float — expliciet
-    casten, anders crasht de vermenigvuldiging met TWILIO_PER_MINUTE_USD."""
+    """Estimate of the telephony cost (inbound + Media Streams combined rate)
+    for one call - 0 while the duration is not known yet (call still running,
+    or the process crashed before ended_at was set). asyncpg sometimes returns
+    EXTRACT(EPOCH FROM ...) as Decimal instead of float - cast explicitly, or
+    the multiplication with TWILIO_PER_MINUTE_USD crashes."""
     if not duration_seconds:
         return 0.0
     return (float(duration_seconds) / 60) * TWILIO_PER_MINUTE_USD
 
 
 def cost_components_usd(model: str, input_tokens: int, output_tokens: int, cached_input_tokens: int = 0) -> dict[str, float]:
-    """Splitst de kost op naar herkomst — vers input, cached input, output —
-    zodat het dashboard per gesprek kan tonen waar de kosten vandaan komen.
-    input_tokens is het TOTALE input-aantal (cached + vers) zoals OpenAI het
-    rapporteert — cached_input_tokens zit er dus AL in."""
+    """Splits the cost by origin - fresh input, cached input, output - so the
+    dashboard can show per conversation where the costs come from.
+    input_tokens is the TOTAL input count (cached + fresh) as OpenAI reports
+    it - so cached_input_tokens is ALREADY included."""
     input_price, output_price = PRICING_PER_MILLION_TOKENS.get(model, (0.0, 0.0))
     cached_price = CACHED_INPUT_PRICING_PER_MILLION_TOKENS.get(model, input_price)
     fresh_input_tokens = max(input_tokens - cached_input_tokens, 0)
@@ -157,10 +157,10 @@ async def log_usage(
 
 
 async def log_call_start(pool: asyncpg.Pool, tenant_id: str, phone_number: str, channel: str) -> int:
-    """Eén rij per opgezette RealtimeConversation-sessie — dit is de teller
-    voor "aantal oproepen", los van usage_log (dat per gespreksbeurt logt).
-    Geeft de nieuwe calls.id terug zodat log_usage() elke turn kan koppelen
-    aan dit gesprek (dashboard: kosten per call)."""
+    """One row per RealtimeConversation session set up - this is the counter
+    for "number of calls", separate from usage_log (which logs per turn).
+    Returns the new calls.id so log_usage() can link every turn to this call
+    (dashboard: cost per call)."""
     async with pool.acquire() as conn:
         return await conn.fetchval(
             "INSERT INTO calls (tenant_id, phone_number, channel) VALUES ($1, $2, $3) RETURNING id",
@@ -171,9 +171,9 @@ async def log_call_start(pool: asyncpg.Pool, tenant_id: str, phone_number: str, 
 
 
 async def log_call_end(pool: asyncpg.Pool, call_id: Optional[int]) -> None:
-    """Zet ended_at bij het opruimen van de media-stream — voedt de Twilio-
-    kostenschatting (duur × tarief) in het dashboard. Geen-op als call_id
-    ontbreekt (bv. connect() zelf faalde voor er een call-rij was)."""
+    """Sets ended_at when the media stream is cleaned up - feeds the Twilio
+    cost estimate (duration x rate) in the dashboard. No-op when call_id is
+    missing (e.g. connect() itself failed before there was a call row)."""
     if call_id is None:
         return
     async with pool.acquire() as conn:
@@ -212,11 +212,11 @@ async def get_tenant_usage_summary(pool: asyncpg.Pool, tenant_id: str, since: Op
 
 
 async def get_calls_with_cost_breakdown(pool: asyncpg.Pool, tenant_id: str, limit: int = 50) -> list[dict[str, Any]]:
-    """Eén rij per call, met de token-som van al zijn beurten en een kosten-
-    herkomst-breakdown (vers input / cached input / output) — voor het
-    uitklapbare "waar komen de kosten vandaan"-overzicht per gesprek in het
-    dashboard. Calls zonder usage_log-rijen (bv. meteen opgehangen) krijgen
-    nul-kosten, geen crash."""
+    """One row per call, with the token sum of all its turns and a cost-origin
+    breakdown (fresh input / cached input / output) - for the expandable
+    "where do the costs come from" view per conversation in the dashboard.
+    Calls without usage_log rows (e.g. hung up at once) get zero cost, not a
+    crash."""
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """

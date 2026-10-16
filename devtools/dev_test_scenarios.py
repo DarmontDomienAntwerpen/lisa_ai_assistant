@@ -1,6 +1,6 @@
-"""Eenmalig testscript: laat Lisa een paar scenario's doorlopen en print het
-resultaat. Bewust minimaal aantal beurten om kosten laag te houden. Niet
-onderdeel van de productiecode.
+"""One-off test script: runs Lisa through a few scenarios and prints the
+result. Deliberately few turns to keep costs low. Not part of the
+production code.
 """
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ async def main() -> None:
     await usage_log.init_schema(pool)
     await tenants.upsert_tenant(pool, TENANT)
 
-    # Case 2 heeft een klant nodig die al bestaat maar nog geen gesprek heeft gehad
+    # Case 2 needs a customer who already exists but has not had a conversation yet
     await customer_lookup.local_create_customer(
         pool, TENANT.client_id, "+32488888882", {"name": "Sofie Peeters"}
     )
@@ -97,7 +97,7 @@ async def main() -> None:
     await run_case(
         pool,
         "4. Afspraak annuleren (tenant heeft calendar_type=none -> geen bookings te vinden, test hallucinatierisico)",
-        "+32488888881",  # zelfde klant als case 1, vervolggesprek
+        "+32488888881",  # same customer as case 1, follow-up conversation
         ["Kan je mijn afspraak van donderdag annuleren?"],
     )
 

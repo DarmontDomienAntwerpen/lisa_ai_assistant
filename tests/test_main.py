@@ -26,6 +26,6 @@ def test_voice_connects_media_stream_for_known_tenant(client, monkeypatch, tenan
     assert response.status_code == 200
     assert "<Connect>" in response.text
     assert "<Stream" in response.text
-    assert "wss://testserver/media-stream" in response.text  # altijd wss, ook lokaal
+    assert "wss://testserver/media-stream" in response.text  # always wss, also locally
     assert tenant.twilio_number in response.text
     assert "+32470000001" in response.text

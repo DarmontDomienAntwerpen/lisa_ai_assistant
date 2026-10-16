@@ -1,10 +1,10 @@
-"""Intern, read-only dashboard: per tenant calls/kosten/escalaties, en een
-transcript-drill-down per klant. HTTP Basic Auth — enkel voor Darmont Digital
-zelf (geen multi-user login), zie CLAUDE.md.
+"""Internal, read-only dashboard: calls/costs/escalations per tenant, and a
+transcript drill-down per customer. HTTP Basic Auth - only for Darmont
+Digital itself (no multi-user login), see CLAUDE.md.
 
-Bevat gevoelige data (gespreksinhoud, telefoonnummers) — daarom altijd achter
-auth, nooit publiek bereikbaar, en DASHBOARD_PASSWORD moet expliciet gezet
-zijn (leeg = toegang geweigerd, nooit "geen wachtwoord vereist").
+Holds sensitive data (conversation content, phone numbers) - so always
+behind auth, never publicly reachable, and DASHBOARD_PASSWORD must be set
+explicitly (empty = access denied, never "no password required").
 """
 from __future__ import annotations
 
@@ -36,8 +36,8 @@ _security = HTTPBasic()
 
 def _require_auth(credentials: Annotated[HTTPBasicCredentials, Depends(_security)]) -> None:
     if not DASHBOARD_PASSWORD:
-        # Geen stille faalstand: leeg wachtwoord betekent geweigerd, nooit
-        # "geen auth nodig" — dit dashboard toont gespreksinhoud en nummers.
+        # No silent failure: an empty password means denied, never
+        # "no auth needed" - this dashboard shows conversation content and numbers.
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Dashboard niet geconfigureerd (DASHBOARD_PASSWORD ontbreekt)")
     correct_username = secrets.compare_digest(credentials.username, DASHBOARD_USERNAME)
     correct_password = secrets.compare_digest(credentials.password, DASHBOARD_PASSWORD)
@@ -50,9 +50,9 @@ def _require_auth(credentials: Annotated[HTTPBasicCredentials, Depends(_security
 
 
 def _estimated_invoice_eur(call_count: int) -> float:
-    """Aanbevolen factuurbedrag: basisprijs + overage boven het inbegrepen
-    aantal gesprekken. Schatting/hulpmiddel voor Domien, geen echte
-    facturatie-integratie — zie CLAUDE.md/PRICING_* env vars."""
+    """Suggested invoice amount: base price + overage above the included
+    number of conversations. An estimate/aid for Domien, not a real billing
+    integration - see CLAUDE.md/PRICING_* env vars."""
     overage_calls = max(0, call_count - PRICING_INCLUDED_CALLS)
     return PRICING_BASE_EUR + overage_calls * PRICING_OVERAGE_EUR
 
@@ -93,9 +93,9 @@ async def overview(_: None = Depends(_require_auth)) -> str:
     all_tenants = await tenants.list_tenants(pool)
     since = datetime.now(timezone.utc) - timedelta(days=30)
 
-    # Vaste, gedeelde infra (Railway + Postgres) gelijk verdeeld over alle
-    # actieve tenants — een ruwe maar redelijke verdeelsleutel zolang er geen
-    # gewicht per klant (bv. call-volume) voor gebruikt wordt.
+    # Fixed, shared infra (Railway + Postgres) split evenly over all active
+    # tenants - a rough but reasonable split as long as no per-customer weight
+    # (e.g. call volume) is used.
     fixed_cost_per_tenant_eur = FIXED_MONTHLY_INFRA_COST_EUR / len(all_tenants) if all_tenants else 0.0
 
     rows = []
@@ -106,8 +106,8 @@ async def overview(_: None = Depends(_require_auth)) -> str:
         last_call = summary["last_call_at"].strftime("%Y-%m-%d %H:%M") if summary["last_call_at"] else "—"
         invoice = _estimated_invoice_eur(summary["call_count"])
 
-        # asyncpg geeft SUM(numeric)/EXTRACT(EPOCH ...) terug als Decimal —
-        # expliciet naar float, anders crasht de optelling hieronder.
+        # asyncpg returns SUM(numeric)/EXTRACT(EPOCH ...) as Decimal - convert to
+        # float explicitly, or the sum below crashes.
         ai_cost_usd = float(summary["total_cost_usd"])
         twilio_cost_usd = float(summary["total_twilio_cost_usd"]) + TWILIO_MONTHLY_NUMBER_USD
         variable_cost_eur = (ai_cost_usd + twilio_cost_usd) * USD_TO_EUR_RATE

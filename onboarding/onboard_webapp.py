@@ -1,15 +1,15 @@
-"""Eén doorlopend lokaal schermpje voor de volledige klant-onboarding: eerst
-vul jij de bedrijfsgegevens in (tenant aanmaken), en zodra je op "Klaar" drukt
-schakelt hetzelfde scherm automatisch door naar de agenda-koppeling — geef op
-dat moment gewoon de laptop aan de klant, die klikt enkel nog "Connecteer",
-logt in met hun eigen Google-account, en de koppeling is meteen opgeslagen.
+"""One continuous local screen for the full customer onboarding: first you
+fill in the business details (create the tenant), and as soon as you press
+"Klaar" the same screen moves on to the calendar connection - at that point
+just hand the laptop to the customer, who only clicks "Connecteer", logs in
+with their own Google account, and the connection is saved at once.
 
-Schrijft altijd naar de PRODUCTIE-database op Railway (haalt DATABASE_PUBLIC_URL
-rechtstreeks op via de railway CLI, negeert .env) — nooit naar de lokale
-testdatabase, dus geen risico dat een echte klant-koppeling in het niets
-verdwijnt. Vereist dat `railway` geïnstalleerd en aan dit project gelinkt is.
+Always writes to the PRODUCTION database on Railway (fetches
+DATABASE_PUBLIC_URL directly via the railway CLI, ignores .env) - never to
+the local test database, so no risk of a real customer connection vanishing.
+Requires `railway` to be installed and linked to this project.
 
-Gebruik:
+Usage:
   python onboarding/onboard_webapp.py
   open http://localhost:8004
 """
@@ -39,16 +39,16 @@ from app.tenants import Tenant  # noqa: E402
 
 
 def _use_production_database() -> None:
-    """Onboarding hoort ALTIJD naar de productie-database te schrijven, nooit
-    naar de lokale testdatabase in .env — anders komt een echte klant-
-    koppeling nergens terecht waar de live Lisa op Railway ze kan vinden.
-    Haalt de productie-DATABASE_PUBLIC_URL EN de productie-
-    CONVERSATION_ENCRYPTION_KEY rechtstreeks van Railway op (niet uit .env):
-    zonder de sleutel mee over te nemen versleutelt dit script calendar_config
-    met de lokale sleutel, terwijl de live app op Railway met de PRODUCTIE-
-    sleutel probeert te ontsleutelen — dat geeft cryptography.fernet.
-    InvalidToken en een crash bij een echte binnenkomende oproep. Faalt hard
-    (geen stille fallback naar lokaal) als dit niet lukt."""
+    """Onboarding must ALWAYS write to the production database, never to the
+    local test database in .env - otherwise a real customer connection ends
+    up somewhere the live Lisa on Railway cannot find it.
+    Fetches the production DATABASE_PUBLIC_URL AND the production
+    CONVERSATION_ENCRYPTION_KEY directly from Railway (not from .env): without
+    taking the key along, this script would encrypt calendar_config with the
+    local key while the live app on Railway tries to decrypt with the
+    PRODUCTION key - giving cryptography.fernet.InvalidToken and a crash on a
+    real incoming call. Fails hard (no silent fallback to local) if this does
+    not work."""
     try:
         db_result = subprocess.run(
             ["railway", "variables", "--service", "Postgres", "--json"],
@@ -77,8 +77,8 @@ _use_production_database()
 SCOPES = [
     "https://www.googleapis.com/auth/calendar",
     "https://www.googleapis.com/auth/userinfo.email",
-    "openid",  # Google voegt dit automatisch toe zodra userinfo.email gevraagd wordt;
-    # expliciet vermelden voorkomt een scope-mismatch-fout in oauthlib
+    "openid",  # Google adds this automatically as soon as userinfo.email is requested;
+    # listing it explicitly avoids a scope-mismatch error in oauthlib
 ]
 CLIENT_SECRET_PATH = Path(__file__).resolve().parent.parent / "google_oauth_client_secret.json"
 
@@ -266,12 +266,12 @@ async def create_tenant(form: TenantForm) -> dict:
     await tenants.init_schema(pool)
 
     client_id = _slugify(form.business_name)
-    # Kritieke fix: dit pad reset voorheen ALTIJD calendar_type/calendar_config
-    # naar "none"/{} — re-run dit formulier voor een klant die al eerder
-    # onboard werd (typo corrigeren, per ongeluk "/" i.p.v. "/edit" gebruikt),
-    # en de live Google-koppeling verdween stilzwijgend. Bestaat deze klant al,
-    # dan blijft de bestaande agenda-koppeling behouden — enkel de formuliervelden
-    # worden bijgewerkt, exact zoals "/edit" dat al deed voor zijn eigen velden.
+    # Critical fix: this path used to ALWAYS reset calendar_type/calendar_config
+    # to "none"/{} - re-run this form for a customer onboarded before (fixing a
+    # typo, using "/" instead of "/edit" by mistake) and the live Google
+    # connection silently disappeared. If this customer already exists, the
+    # existing calendar connection is kept - only the form fields are updated,
+    # exactly as "/edit" already did for its own fields.
     existing = await tenants.get_tenant_by_client_id(pool, client_id)
     tenant = Tenant(
         client_id=client_id,
@@ -291,10 +291,10 @@ async def create_tenant(form: TenantForm) -> dict:
             status_code=400,
             detail=f"Dit Twilio-nummer ({form.twilio_number}) is al in gebruik door een andere klant.",
         )
-    # Per client_id bijgehouden (niet één plat globaal "tenant"/"pool") zodat
-    # een oud/stilstaand tabblad van een vorige klant nooit per ongeluk de
-    # agenda-koppeling van een ANDERE, huidige klant kan overschrijven —
-    # elke vervolgstap geeft expliciet zijn eigen client_id mee.
+    # Tracked per client_id (not one flat global "tenant"/"pool") so an old/
+    # stale tab of a previous customer can never accidentally overwrite the
+    # calendar connection of ANOTHER, current customer - every follow-up step
+    # passes its own client_id explicitly.
     _state[client_id] = {"tenant": tenant, "pool": pool}
     if existing and existing.calendar_type != "none":
         note = f"Klant bestond al met een actieve agenda-koppeling ({existing.calendar_type}) — die blijft behouden."
@@ -315,10 +315,10 @@ class CalendarChoice(BaseModel):
 
 @app.post("/connect-calendar")
 async def connect_calendar(req: ConnectCalendarRequest) -> dict:
-    """Stap 1: OAuth-login, dan de beschikbare agenda's van dit account
-    oplijsten — NOOIT blind 'primary' aannemen, een account kan meerdere
-    agenda's hebben (bv. een aparte "Kapsalon Afspraken"-agenda naast de
-    persoonlijke hoofdagenda) en de klant moet zelf kunnen kiezen welke."""
+    """Step 1: OAuth login, then list this account's available calendars -
+    NEVER blindly assume 'primary'; an account can have several calendars
+    (e.g. a separate "Kapsalon Afspraken" calendar next to the personal main
+    calendar) and the customer must be able to choose which one."""
     entry = _state.get(req.client_id)
     if entry is None:
         raise HTTPException(status_code=400, detail="Nog geen tenant aangemaakt — vul eerst het formulier in.")
@@ -349,7 +349,7 @@ async def connect_calendar(req: ConnectCalendarRequest) -> dict:
                 lambda: build("oauth2", "v2", credentials=credentials).userinfo().get().execute()
             )
             google_email = userinfo.get("email", "")
-        except Exception:  # noqa: BLE001 — nooit de hele koppeling laten falen op deze extra stap
+        except Exception:  # noqa: BLE001 - never let the whole connection fail on this extra step
             google_email = ""
         if google_email:
             tenant.escalation_email = google_email
@@ -359,7 +359,7 @@ async def connect_calendar(req: ConnectCalendarRequest) -> dict:
 
 @app.post("/select-calendar")
 async def select_calendar(choice: CalendarChoice) -> dict:
-    """Stap 2: de klant koos welke agenda — nu pas definitief opslaan."""
+    """Step 2: the customer chose a calendar - only now save it for good."""
     entry = _state.get(choice.client_id)
     tenant = entry["tenant"] if entry else None
     pool = entry["pool"] if entry else None
@@ -393,9 +393,9 @@ class TenantEditForm(BaseModel):
 
 @app.get("/edit", response_class=HTMLResponse)
 async def edit_index() -> str:
-    """Kies een bestaande klant om enkel niche/system_prompt_extra/escalatie
-    bij te werken — raakt calendar_type/calendar_config NOOIT aan, in
-    tegenstelling tot het opnieuw draaien van de onboarding-flow."""
+    """Pick an existing customer to update only niche/system_prompt_extra/
+    escalation - NEVER touches calendar_type/calendar_config, unlike re-running
+    the onboarding flow."""
     pool = await get_pool()
     await tenants.init_schema(pool)
     all_tenants = await tenants.list_tenants(pool)
@@ -480,8 +480,8 @@ async def update_tenant_fields(client_id: str, form: TenantEditForm) -> dict:
     if tenant is None:
         raise HTTPException(status_code=404, detail="Onbekende klant")
 
-    # Enkel deze velden aanpassen — calendar_type/calendar_config/twilio_number/
-    # business_name blijven exact zoals ze waren.
+    # Only change these fields - calendar_type/calendar_config/twilio_number/
+    # business_name stay exactly as they were.
     tenant.niche = form.niche
     tenant.system_prompt_extra = form.system_prompt_extra
     tenant.escalation_contact = form.escalation_contact

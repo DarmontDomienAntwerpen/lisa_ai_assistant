@@ -1,5 +1,5 @@
-"""Gedeelde test-fixtures. Geen echte Postgres/Twilio/OpenAI-calls in de
-testsuite — alles wordt gemockt, zodat tests snel en deterministisch zijn."""
+"""Shared test fixtures. No real Postgres/Twilio/OpenAI calls in the test
+suite - everything is mocked, so tests are fast and deterministic."""
 from __future__ import annotations
 
 import os
@@ -35,8 +35,8 @@ def tenant() -> Tenant:
 
 
 class FakeConnection:
-    """Minimalistische asyncpg-connection-mock met een fetchrow/fetch/execute
-    interface die is voorgeprogrammeerd via return_value/side_effect."""
+    """Minimal asyncpg connection mock with a fetchrow/fetch/execute
+    interface, preprogrammed via return_value/side_effect."""
 
     def __init__(self):
         self.execute = AsyncMock(return_value="INSERT 0 1")
